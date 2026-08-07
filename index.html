@@ -18,6 +18,8 @@
 <link rel="apple-touch-icon" sizes="180x180" href="logo_180.png?v=2">
 <!-- تخطي التخزين المؤقت -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+ <link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d47a1">
 <title>معهد الإمام سحنون للعلوم الشرعية</title>
 
 <!-- Firebase -->
@@ -1264,5 +1266,12 @@ const app = {
 document.addEventListener('DOMContentLoaded', () => app.init());
 </script>
   <script>if('serviceWorker' in navigator)navigator.serviceWorker.register('data:text/javascript;base64,c2VsZi5hZGRFdmVudExpc3RlbmVyKCdpbnN0YWxsJyxlPT5zZWxmLnNraXBXYWl0aW5nKCkpO3NlbGYuYWRkRXZlbnRMaXN0ZW5lcignYWN0aXZhdGUnLGU9PmUud2FpdFVudGlsKHNlbGYuY2xpZW50cy5jbGFpbSgpKSk7').catch(()=>{});</script>
+ <script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('service-worker.js')
+      .then(() => console.log('Service Worker: مسجل ✅'))
+      .catch(err => console.log('Service Worker: فشل ❌', err));
+  }
+</script>
 </body>
 </html>
