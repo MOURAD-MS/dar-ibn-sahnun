@@ -55,6 +55,7 @@
 
   <!-- ===== External Scripts ===== -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
@@ -97,6 +98,16 @@ body {
   touch-action:manipulation;
 }
 .login-card button:active { transform:scale(0.98); }
+
+/* Login Tabs */
+.login-tabs { display:flex; gap:4px; margin-bottom:20px; background:#f0f4f8; border-radius:12px; padding:4px; }
+.login-tab { flex:1; padding:12px; border:none; border-radius:10px; background:transparent; cursor:pointer; font-size:0.95rem; color:#555; transition:0.2s; }
+.login-tab.active { background:white; color:#1a5f2a; font-weight:bold; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
+.login-tab:active { transform:scale(0.98); }
+
+/* Remember me */
+.remember-label { display:flex; align-items:center; gap:8px; margin:10px 0; font-size:0.9rem; color:#555; cursor:pointer; text-align:right; justify-content:flex-start; }
+.remember-label input { width:18px; height:18px; accent-color:#1a5f2a; }
 
 /* ========== LAYOUT ========== */
 .hidden { display:none !important; }
@@ -202,7 +213,7 @@ tr:active { background:#f0f8f2; }
 .btn-block { width:100%; justify-content:center; padding:14px; font-size:1rem; }
 
 /* ========== FORMS ========== */
-.form-group { display:flex; flex-direction:column; margin-bottom:14px; }
+.form-group { display:flex; flex-direction:column; margin-bottom:14px; text-align:right; }
 .form-group label { margin-bottom:5px; color:#555; font-size:0.9rem; font-weight:600; }
 .form-group input,.form-group select,.form-group textarea {
   padding:12px; border:1px solid #ddd; border-radius:10px;
@@ -381,17 +392,29 @@ tr:active { background:#f0f8f2; }
 <!-- ============ LOGIN SCREEN ============ -->
 <div id="loginScreen" class="login-screen">
   <div class="login-card">
-    <h1>🕌 معهد الإمام سحنون</h1>
-    <p>للعلوم الشرعية - المنصة السحابية</p>
-    <select id="loginRole">
-      <option value="admin">👤 مدير النظام</option>
-      <option value="teacher">👨‍🏫 أستاذ</option>
-      <option value="student">🎓 طالب</option>
-    </select>
-    <input type="text" id="loginUsername" placeholder="اسم المستخدم">
-    <input type="password" id="loginPassword" placeholder="كلمة المرور">
-    <button onclick="app.login()">تسجيل الدخول</button>
-    <p style="margin-top:14px; font-size:0.82rem; color:#888;">كلمة المرور التجريبية: 123456</p>
+    <div class="login-tabs">
+      <button class="login-tab active" id="tabUser" onclick="app.switchLoginTab('user')">تسجيل الدخول</button>
+      <button class="login-tab" id="tabAdmin" onclick="app.switchLoginTab('admin')">مدير النظام</button>
+    </div>
+    <div id="userLoginForm">
+      <h1>🕌 معهد الإمام سحنون</h1>
+      <p>للعلوم الشرعية - تسجيل الدخول</p>
+      <input type="text" id="loginUsername" placeholder="اسم المستخدم" autocomplete="username">
+      <input type="password" id="loginPassword" placeholder="كلمة المرور" autocomplete="current-password">
+      <label class="remember-label">
+        <input type="checkbox" id="rememberMe" checked> تذكرني (لا تُخرجني إلا بتسجيل خروج صريح)
+      </label>
+      <button onclick="app.login()">تسجيل الدخول</button>
+      <p style="margin-top:14px; font-size:0.82rem; color:#888;">إذا نسيت كلمة المرور، تواصل مع الأستاذ أو المدير.</p>
+    </div>
+    <div id="adminLoginForm" class="hidden">
+      <h1>🕌 معهد الإمام سحنون</h1>
+      <p>لوحة المدير - تسجيل الدخول</p>
+      <input type="email" id="adminEmail" placeholder="البريد الإلكتروني" autocomplete="email" dir="ltr">
+      <input type="password" id="adminPassword" placeholder="كلمة المرور" autocomplete="current-password">
+      <button onclick="app.adminLogin()">دخول المدير</button>
+      <p style="margin-top:14px; font-size:0.82rem; color:#888;">نسيت كلمة المرور؟ استخدم "استعادة كلمة المرور" في Firebase.</p>
+    </div>
   </div>
 </div>
 <!-- ============ APP CONTAINER ============ -->
@@ -422,6 +445,7 @@ if (!firebase.apps.length) {
   firebase.initializeApp(firebaseConfig);
 }
 const db = firebase.firestore();
+
 /* =========================================================
    2. APP CORE
    ========================================================= */
@@ -432,7 +456,7 @@ const app = {
     activeExamId: null,
     timerInterval: null,
     students: [], teachers: [], lessons: [], materials: [],
-    exams: [], attendance: [], timetable: [],
+    exams: [], attendance: [], timetable: [], users: [],
     menuOpen: false
   },
   /* ---------- Helpers ---------- */
@@ -476,36 +500,131 @@ const app = {
       document.getElementById('menuOverlay').classList.remove('show');
     }
   },
+  /* ---------- Login Tabs ---------- */
+  switchLoginTab(tab) {
+    document.getElementById('tabUser').classList.toggle('active', tab === 'user');
+    document.getElementById('tabAdmin').classList.toggle('active', tab === 'admin');
+    document.getElementById('userLoginForm').classList.toggle('hidden', tab !== 'user');
+    document.getElementById('adminLoginForm').classList.toggle('hidden', tab !== 'admin');
+  },
   /* ---------- Auth ---------- */
-  login() {
-    const role = document.getElementById('loginRole').value;
+  async login() {
     const username = document.getElementById('loginUsername').value.trim();
     const password = document.getElementById('loginPassword').value;
-    if (!username || password !== '123456') {
-      this.showToast('يرجى إدخال اسم المستخدم وكلمة المرور 123456', 'error');
+    const remember = document.getElementById('rememberMe').checked;
+    if (!username || !password) {
+      this.showToast('يرجى إدخال اسم المستخدم وكلمة المرور', 'error');
       return;
     }
-    this.data.currentUser = { role, username, name: username };
+    try {
+      const snap = await db.collection('users').where('username','==',username).limit(1).get();
+      if (snap.empty) {
+        this.showToast('اسم المستخدم أو كلمة المرور غير صحيحة', 'error');
+        return;
+      }
+      const userDoc = snap.docs[0];
+      const userData = userDoc.data();
+      if (userData.password !== password) {
+        this.showToast('اسم المستخدم أو كلمة المرور غير صحيحة', 'error');
+        return;
+      }
+      this.data.currentUser = { uid: userDoc.id, ...userData };
+      if (remember) {
+        localStorage.setItem('sahnun_session', JSON.stringify({ uid: userDoc.id, username, role: userData.role }));
+      }
+      this.enterApp();
+    } catch(e) {
+      console.error(e);
+      this.showToast('خطأ في الاتصال، تأكد من الإنترنت', 'error');
+    }
+  },
+  async adminLogin() {
+    const email = document.getElementById('adminEmail').value.trim();
+    const password = document.getElementById('adminPassword').value;
+    if (!email || !password) {
+      this.showToast('يرجى إدخال البريد وكلمة المرور', 'error');
+      return;
+    }
+    try {
+      const cred = await firebase.auth().signInWithEmailAndPassword(email, password);
+      const user = cred.user;
+      this.data.currentUser = { uid: user.uid, username: user.email, name: 'المدير', role: 'admin', email: user.email };
+      localStorage.setItem('sahnun_session', JSON.stringify({ uid: user.uid, username: user.email, role: 'admin' }));
+      this.enterApp();
+    } catch(e) {
+      console.error(e);
+      this.showToast('خطأ في البريد الإلكتروني أو كلمة المرور', 'error');
+    }
+  },
+  enterApp() {
     document.getElementById('loginScreen').classList.add('hidden');
     document.getElementById('appContainer').classList.remove('hidden');
     this.buildNav();
     this.startSync();
     this.navigate('dashboard');
   },
+  checkAuth() {
+    const session = localStorage.getItem('sahnun_session');
+    if (!session) {
+      document.getElementById('loginScreen').classList.remove('hidden');
+      return;
+    }
+    try {
+      const data = JSON.parse(session);
+      if (data.role === 'admin') {
+        firebase.auth().onAuthStateChanged(user => {
+          if (user) {
+            this.data.currentUser = { uid: user.uid, username: user.email, name: 'المدير', role: 'admin', email: user.email };
+            this.enterApp();
+          } else {
+            localStorage.removeItem('sahnun_session');
+            document.getElementById('loginScreen').classList.remove('hidden');
+          }
+        });
+      } else {
+        db.collection('users').doc(data.uid).get().then(doc => {
+          if (doc.exists) {
+            this.data.currentUser = { uid: doc.id, ...doc.data() };
+            this.enterApp();
+          } else {
+            localStorage.removeItem('sahnun_session');
+            document.getElementById('loginScreen').classList.remove('hidden');
+          }
+        }).catch(() => {
+          localStorage.removeItem('sahnun_session');
+          document.getElementById('loginScreen').classList.remove('hidden');
+        });
+      }
+    } catch(e) {
+      localStorage.removeItem('sahnun_session');
+      document.getElementById('loginScreen').classList.remove('hidden');
+    }
+  },
   logout() {
+    if (this.data.currentUser?.role === 'admin') {
+      firebase.auth().signOut().catch(()=>{});
+    }
+    localStorage.removeItem('sahnun_session');
+    this.data.currentUser = null;
+    this.data.currentPage = 'dashboard';
     document.getElementById('loginScreen').classList.remove('hidden');
     document.getElementById('appContainer').classList.add('hidden');
-    this.data.currentUser = null;
     this.stopSync();
     this.closeMenuIfMobile();
+    document.getElementById('loginUsername').value = '';
+    document.getElementById('loginPassword').value = '';
+    document.getElementById('adminEmail').value = '';
+    document.getElementById('adminPassword').value = '';
   },
   /* ---------- Navigation ---------- */
   buildNav() {
-    const r = this.data.currentUser.role;
+    const r = this.data.currentUser?.role;
+    if (!r) return;
     const items = [
       { id:'dashboard', label:'📊 الرئيسية', roles:['admin','teacher','student'] },
       { id:'students', label:'👨‍🎓 الطلاب', roles:['admin','teacher'] },
       { id:'teachers', label:'👨‍🏫 المدرسون', roles:['admin'] },
+      { id:'users', label:'👥 إدارة المستخدمين', roles:['admin'] },
       { id:'timetable', label:'📅 الجدول الأسبوعي', roles:['admin','teacher','student'] },
       { id:'lessons', label:'📚 الدروس والحضور', roles:['admin','teacher'] },
       { id:'attendance', label:'✅ الحضور والغياب', roles:['admin','teacher'] },
@@ -520,6 +639,11 @@ const app = {
     ).join('');
   },
   navigate(page, extra) {
+    if (!this.data.currentUser) {
+      this.showToast('الجلسة انتهت، سجّل الدخول من جديد', 'error');
+      this.logout();
+      return;
+    }
     this.data.currentPage = page;
     if (page === 'takeExam') { this.data.activeExamId = extra; }
     if (page === 'examQuestions') { this.data.activeExamId = extra; }
@@ -532,6 +656,7 @@ const app = {
     if (page === 'timetable') { this.renderTimetableView(); }
     if (page === 'students') { this.renderStudentsTable(); }
     if (page === 'teachers') { this.renderTeachersTable(); }
+    if (page === 'users') { this.renderUsersTable(); }
     if (page === 'library') { this.renderLibraryGrid(); }
     if (page === 'exams') { this.renderExamsTable(); }
     if (page === 'examQuestions') { this.renderExamQuestionsList(); }
@@ -543,6 +668,7 @@ const app = {
   unsubscribers: [],
   startSync() {
     this.unsubscribers = [
+      db.collection('users').onSnapshot(snap => { this.data.users = snap.docs.map(d=>({id:d.id,...d.data()})); if(this.data.currentPage==='users') this.renderUsersTable(); }),
       db.collection('students').onSnapshot(snap => { this.data.students = snap.docs.map(d=>({id:d.id,...d.data()})); if(this.data.currentPage==='students') this.renderStudentsTable(); if(this.data.currentPage==='dashboard') this.renderDashboardStats(); }),
       db.collection('teachers').onSnapshot(snap => { this.data.teachers = snap.docs.map(d=>({id:d.id,...d.data()})); if(this.data.currentPage==='teachers') this.renderTeachersTable(); if(this.data.currentPage==='dashboard') this.renderDashboardStats(); }),
       db.collection('lessons').onSnapshot(snap => { this.data.lessons = snap.docs.map(d=>({id:d.id,...d.data()})); if(this.data.currentPage==='lessons') this.renderLessonsList(); if(this.data.currentPage==='myLessons') this.navigate('myLessons'); }),
@@ -576,6 +702,7 @@ const app = {
       case 'dashboard': return this.renderDashboard();
       case 'students': return this.renderStudentsPage();
       case 'teachers': return this.renderTeachersPage();
+      case 'users': return this.renderUsersPage();
       case 'timetable': return this.renderTimetablePage();
       case 'lessons': return this.renderLessonsPage();
       case 'attendance': return this.renderAttendancePage();
@@ -590,16 +717,22 @@ const app = {
     }
   },
   renderDashboard() {
+    const r = this.data.currentUser?.role;
+    const quickActions = r === 'admin' ? `
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;">
+        <button class="btn btn-primary" onclick="app.navigate('users')">+ مستخدم جديد</button>
+        <button class="btn btn-success" onclick="app.navigate('lessons')">+ درس جديد</button>
+        <button class="btn btn-info" onclick="app.navigate('timetable')">📅 الجدول الأسبوعي</button>
+        <button class="btn btn-warning" onclick="app.navigate('exams')">+ اختبار جديد</button>
+      </div>` : r === 'teacher' ? `
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;">
+        <button class="btn btn-success" onclick="app.navigate('lessons')">+ درس جديد</button>
+        <button class="btn btn-info" onclick="app.navigate('timetable')">📅 الجدول الأسبوعي</button>
+        <button class="btn btn-warning" onclick="app.navigate('exams')">+ اختبار جديد</button>
+      </div>` : '';
     return `<div class="header-bar"><h2>📊 لوحة التحكم</h2><div class="cloud-indicator">☁️ متصل بالسحابة</div></div>
       <div class="stats-grid" id="dashStats"></div>
-      <div class="card"><h3>⚡ إجراءات سريعة</h3>
-        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;">
-          <button class="btn btn-primary" onclick="app.navigate('students')">+ طالب جديد</button>
-          <button class="btn btn-success" onclick="app.navigate('lessons')">+ درس جديد</button>
-          <button class="btn btn-info" onclick="app.navigate('timetable')">📅 الجدول الأسبوعي</button>
-          <button class="btn btn-warning" onclick="app.navigate('exams')">+ اختبار جديد</button>
-        </div>
-      </div>
+      <div class="card"><h3>⚡ إجراءات سريعة</h3>${quickActions || '<p style="color:#888;">استكشف الجدول والمكتبة والاختبارات من القائمة.</p>'}</div>
       <div class="card"><h3>📈 آخر النشاطات</h3><p style="color:#888; margin-top:8px;">البيانات تُحمل مباشرة من السحابة...</p></div>`;
   },
   renderDashboardStats() {
@@ -720,20 +853,128 @@ const app = {
     } catch(e) { this.showToast('خطأ في الحفظ','error'); }
   },
   /* =========================================================
-     6. WEEKLY TIMETABLE
+     6. USERS MANAGEMENT
+     ========================================================= */
+  renderUsersPage() {
+    return `<div class="header-bar"><h2>👥 إدارة المستخدمين</h2><button class="btn btn-primary" onclick="app.showUserModal()">+ مستخدم جديد</button></div>
+      <div class="card"><input class="search-box" id="userSearch" placeholder="🔍 البحث بالاسم أو اسم المستخدم..." oninput="app.filterUsers()"></div>
+      <div class="card"><div class="table-wrap" id="usersTableWrap"></div></div>`;
+  },
+  renderUsersTable() {
+    const wrap = document.getElementById('usersTableWrap');
+    if (!wrap) return;
+    if (!this.data.users.length) { wrap.innerHTML = '<div class="empty-state">لا يوجد مستخدمون مسجلون.</div>'; return; }
+    let html = `<table><tr><th>الاسم</th><th>اسم المستخدم</th><th>الدور</th><th>القسم</th><th>إجراءات</th></tr>`;
+    this.data.users.forEach(u => {
+      const roleLabel = u.role === 'student' ? '🎓 طالب' : u.role === 'teacher' ? '👨‍🏫 أستاذ' : '👤 غير معروف';
+      html += `<tr><td><strong>${this.escapeHtml(u.name)}</strong></td>
+        <td dir="ltr">${this.escapeHtml(u.username)}</td>
+        <td><span class="badge badge-info">${roleLabel}</span></td>
+        <td><span class="badge badge-primary">${this.escapeHtml(u.section || '—')}</span></td>
+        <td>
+          <button class="btn btn-warning" onclick="app.showResetPasswordModal('${u.id}','${this.escapeHtml(u.name)}')">🔑 إعادة تعيين</button>
+          <button class="btn btn-danger" onclick="app.deleteDoc('users','${u.id}')">حذف</button>
+        </td></tr>`;
+    });
+    html += '</table>';
+    wrap.innerHTML = html;
+  },
+  filterUsers() {
+    const q = document.getElementById('userSearch').value.toLowerCase();
+    const rows = document.querySelectorAll('#usersTableWrap table tr:not(:first-child)');
+    rows.forEach(r => {
+      const text = r.textContent.toLowerCase();
+      r.style.display = text.includes(q) ? '' : 'none';
+    });
+  },
+  showUserModal() {
+    this.openModal(`<div class="modal"><h3>إضافة مستخدم جديد</h3>
+      <div class="form-group"><label>الاسم الكامل</label><input id="uName" placeholder="مثال: أحمد بن محمد"></div>
+      <div class="form-group"><label>اسم المستخدم (فريد، بدون مسافات)</label><input id="uUsername" placeholder="ahmed_ben_mohamed" dir="ltr"></div>
+      <div class="form-group"><label>كلمة المرور (4 أرقام أو أكثر)</label><input type="password" id="uPassword" placeholder="1234"></div>
+      <div class="form-group"><label>الدور</label>
+        <select id="uRole" onchange="app.toggleUserSection()">
+          <option value="student">🎓 طالب</option>
+          <option value="teacher">👨‍🏫 أستاذ</option>
+        </select>
+      </div>
+      <div class="form-group" id="uSectionWrap">
+        <label>القسم / المرحلة</label>
+        <select id="uSection">
+          <option value="">-- اختر القسم --</option>
+          <option value="السنة الأولى - المتوسط">السنة الأولى - المتوسط</option>
+          <option value="السنة الثانية - المتوسط">السنة الثانية - المتوسط</option>
+          <option value="السنة الثالثة - المتوسط">السنة الثالثة - المتوسط</option>
+          <option value="السنة الأولى - الثانوي">السنة الأولى - الثانوي</option>
+          <option value="السنة الثانية - الثانوي">السنة الثانية - الثانوي</option>
+          <option value="السنة الثالثة - الثانوي">السنة الثالثة - الثانوي</option>
+          <option value="المرحلة الجامعية - الأولى">المرحلة الجامعية - الأولى</option>
+          <option value="المرحلة الجامعية - الثانية">المرحلة الجامعية - الثانية</option>
+          <option value="المرحلة الجامعية - الثالثة">المرحلة الجامعية - الثالثة</option>
+          <option value="المرحلة الجامعية - الرابعة">المرحلة الجامعية - الرابعة</option>
+          <option value="الدراسات العليا">الدراسات العليا</option>
+        </select>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="app.saveUser()">💾 إنشاء المستخدم</button>
+      <button class="btn btn-secondary btn-block" onclick="app.closeModal()">إلغاء</button>
+    </div>`);
+  },
+  toggleUserSection() {
+    const role = document.getElementById('uRole').value;
+    const wrap = document.getElementById('uSectionWrap');
+    if (wrap) wrap.style.display = role === 'student' ? 'flex' : 'none';
+  },
+  async saveUser() {
+    const name = document.getElementById('uName').value.trim();
+    const username = document.getElementById('uUsername').value.trim().replace(/\s/g, '');
+    const password = document.getElementById('uPassword').value;
+    const role = document.getElementById('uRole').value;
+    const section = role === 'student' ? document.getElementById('uSection').value : '';
+    if (!name || !username || !password) return this.showToast('يرجى ملء جميع الحقول الإلزامية', 'error');
+    if (password.length < 4) return this.showToast('كلمة المرور يجب أن تكون 4 أرقام على الأقل', 'error');
+    if (role === 'student' && !section) return this.showToast('يرجى اختيار القسم للطالب', 'error');
+    try {
+      const existing = await db.collection('users').where('username','==',username).limit(1).get();
+      if (!existing.empty) return this.showToast('اسم المستخدم مستخدم بالفعل، اختر اسماً آخر', 'error');
+      await db.collection('users').add({ name, username, password, role, section: section || '', createdAt: new Date() });
+      this.showToast('تم إنشاء المستخدم بنجاح');
+      this.closeModal();
+    } catch(e) { console.error(e); this.showToast('خطأ في الحفظ', 'error'); }
+  },
+  showResetPasswordModal(userId, userName) {
+    this.openModal(`<div class="modal"><h3>إعادة تعيين كلمة المرور — ${this.escapeHtml(userName)}</h3>
+      <div class="form-group"><label>كلمة المرور الجديدة (4 أرقام أو أكثر)</label><input type="password" id="newPassword" placeholder="أدخل كلمة المرور الجديدة"></div>
+      <button class="btn btn-primary btn-block" onclick="app.resetPassword('${userId}')">🔑 حفظ</button>
+      <button class="btn btn-secondary btn-block" onclick="app.closeModal()">إلغاء</button>
+    </div>`);
+  },
+  async resetPassword(userId) {
+    const newPassword = document.getElementById('newPassword').value;
+    if (!newPassword || newPassword.length < 4) return this.showToast('كلمة المرور قصيرة جداً', 'error');
+    try {
+      await db.collection('users').doc(userId).update({ password: newPassword });
+      this.showToast('تم تغيير كلمة المرور بنجاح');
+      this.closeModal();
+    } catch(e) { this.showToast('خطأ في التحديث', 'error'); }
+  },
+  /* =========================================================
+     7. WEEKLY TIMETABLE
      ========================================================= */
   timetableSections: ['السنة الأولى - المتوسط','السنة الثانية - المتوسط','السنة الثالثة - المتوسط','السنة الأولى - الثانوي','السنة الثانية - الثانوي','السنة الثالثة - الثانوي','المرحلة الجامعية - الأولى','المرحلة الجامعية - الثانية','المرحلة الجامعية - الثالثة','المرحلة الجامعية - الرابعة','الدراسات العليا'],
   timetableDays: ['السبت','الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس'],
   timetableSlots: ['08:00','09:30','11:00','13:00','14:30','16:00'],
   renderTimetablePage() {
+    const isStudent = this.data.currentUser?.role === 'student';
     const sections = this.timetableSections;
+    const studentSection = this.data.currentUser?.section;
     return `<div class="header-bar"><h2>📅 الجدول الأسبوعي</h2>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        <select id="ttSectionFilter" class="search-box" style="max-width:220px; margin:0;" onchange="app.renderTimetableView()">
+        ${!isStudent ? `<select id="ttSectionFilter" class="search-box" style="max-width:220px; margin:0;" onchange="app.renderTimetableView()">
           <option value="all">جميع الأقسام</option>
           ${sections.map(s=>`<option value="${s}">${s}</option>`).join('')}
         </select>
-        <button class="btn btn-primary" onclick="app.showTimetableModal()">+ إضافة حصة</button>
+        <button class="btn btn-primary" onclick="app.showTimetableModal()">+ إضافة حصة</button>` : 
+        `<input type="hidden" id="ttSectionFilter" value="${studentSection||'all'}">`}
       </div>
     </div>
     <div class="card" id="timetableCard"></div>`;
@@ -742,41 +983,34 @@ const app = {
     const card = document.getElementById('timetableCard');
     if (!card) return;
     const sectionFilter = document.getElementById('ttSectionFilter')?.value || 'all';
-    const entries = this.data.timetable.filter(e => sectionFilter==='all' || e.section===sectionFilter);
-    // Desktop grid
+    const userSection = this.data.currentUser?.role === 'student' ? this.data.currentUser?.section : null;
+    const effectiveFilter = userSection || sectionFilter;
+    const entries = this.data.timetable.filter(e => effectiveFilter==='all' || e.section===effectiveFilter);
     let html = `<div style="overflow-x:auto;"><div class="timetable-grid">`;
     html += `<div class="timetable-header">الوقت / اليوم</div>`;
     this.timetableDays.forEach(d => html += `<div class="timetable-header">${d}</div>`);
     this.timetableSlots.forEach(slot => {
       html += `<div class="timetable-time">${slot}</div>`;
       this.timetableDays.forEach(day => {
-        const entry = entries.find(e => e.day===day && e.time===slot && (sectionFilter==='all' || e.section===sectionFilter));
+        const entry = entries.find(e => e.day===day && e.time===slot && (effectiveFilter==='all' || e.section===effectiveFilter));
         if (entry) {
-          html += `<div class="timetable-cell" onclick="app.showTimetableModal('${entry.id}')">
-            <div class="lesson-title">${this.escapeHtml(entry.title)}</div>
-            <div class="lesson-meta">${this.escapeHtml(entry.teacher||'')} | ${this.escapeHtml(entry.section)}</div>
-          </div>`;
+          html += `<div class="timetable-cell" onclick="app.showTimetableModal('${entry.id}')"><div class="lesson-title">${this.escapeHtml(entry.title)}</div><div class="lesson-meta">${this.escapeHtml(entry.teacher||'')} | ${this.escapeHtml(entry.section)}</div></div>`;
         } else {
           html += `<div class="timetable-cell empty">—</div>`;
         }
       });
     });
     html += `</div></div>`;
-    // Mobile list view
     html += `<div class="timetable-mobile-list">`;
     this.timetableDays.forEach(day => {
       const dayEntries = entries.filter(e => e.day === day);
-      if (!dayEntries.length && sectionFilter !== 'all') return;
-      html += `<div class="tt-mobile-card">
-        <div class="tt-day">${day}</div>`;
+      if (!dayEntries.length && effectiveFilter !== 'all') return;
+      html += `<div class="tt-mobile-card"><div class="tt-day">${day}</div>`;
       this.timetableSlots.forEach(slot => {
         const entry = dayEntries.find(e => e.time === slot);
         if (entry) {
-          html += `<div class="tt-slot" onclick="app.showTimetableModal('${entry.id}')">
-            <div><div class="tt-lesson">${this.escapeHtml(entry.title)}</div><div class="tt-meta">${this.escapeHtml(entry.teacher||'')} | ${this.escapeHtml(entry.section)}</div></div>
-            <div class="tt-time">${slot}</div>
-          </div>`;
-        } else if (sectionFilter === 'all') {
+          html += `<div class="tt-slot" onclick="app.showTimetableModal('${entry.id}')"><div><div class="tt-lesson">${this.escapeHtml(entry.title)}</div><div class="tt-meta">${this.escapeHtml(entry.teacher||'')} | ${this.escapeHtml(entry.section)}</div></div><div class="tt-time">${slot}</div></div>`;
+        } else if (effectiveFilter === 'all') {
           html += `<div class="tt-slot"><div class="tt-lesson" style="color:#aaa; font-weight:normal;">— لا توجد حصة —</div><div class="tt-time">${slot}</div></div>`;
         }
       });
@@ -786,6 +1020,8 @@ const app = {
     card.innerHTML = html;
   },
   showTimetableModal(entryId) {
+    const isStudent = this.data.currentUser?.role === 'student';
+    if (isStudent) return; // Students can't edit
     const entry = entryId ? this.data.timetable.find(e => e.id === entryId) : null;
     this.openModal(`<div class="modal"><h3>${entry ? 'تعديل الحصة' : 'إضافة حصة للجدول'}</h3>
       <div class="form-group"><label>المادة / الدرس</label><input id="ttTitle" value="${entry ? this.escapeHtml(entry.title) : ''}"></div>
@@ -824,7 +1060,7 @@ const app = {
     } catch(e) { this.showToast('خطأ في الحفظ','error'); }
   },
   /* =========================================================
-     7. LESSONS & ATTENDANCE LINKS
+     8. LESSONS & ATTENDANCE LINKS
      ========================================================= */
   renderLessonsPage() {
     return `<div class="header-bar"><h2>📚 إدارة الدروس</h2><button class="btn btn-primary" onclick="app.showLessonModal()">+ درس جديد</button></div>
@@ -887,7 +1123,7 @@ const app = {
     } catch(e) { this.showToast('خطأ في الحفظ','error'); }
   },
   /* =========================================================
-     8. ATTENDANCE MANAGEMENT
+     9. ATTENDANCE MANAGEMENT
      ========================================================= */
   renderAttendancePage() {
     return `<div class="header-bar"><h2>✅ سجلات الحضور والغياب</h2>
@@ -1014,11 +1250,11 @@ const app = {
     } catch(e) { this.showToast('حدث خطأ أثناء التسجيل، حاول مرة أخرى.', 'error'); }
   },
   /* =========================================================
-     9. LIBRARY
+     10. LIBRARY
      ========================================================= */
   renderLibraryPage() {
     return `<div class="header-bar"><h2>📖 المكتبة السحابية</h2>
-      ${this.data.currentUser.role !== 'student' ? `<button class="btn btn-primary" onclick="app.showMaterialModal()">+ محتوى جديد</button>` : ''}
+      ${this.data.currentUser?.role !== 'student' ? `<button class="btn btn-primary" onclick="app.showMaterialModal()">+ محتوى جديد</button>` : ''}
     </div>
     <div class="card" style="display:flex; gap:10px; flex-wrap:wrap;">
       <input class="search-box" id="libSearch" placeholder="🔍 البحث..." oninput="app.filterLibrary()" style="margin:0;">
@@ -1048,7 +1284,7 @@ const app = {
           <p style="font-size:0.84rem; color:#666; margin-bottom:12px; flex:1;">${this.escapeHtml(m.description||'')}</p>
           <div style="display:flex; gap:6px;">
             <a href="${m.url}" target="_blank" class="btn btn-primary" style="flex:1; justify-content:center; min-height:44px;">${m.type==='video'?'مشاهدة':'تحميل'}</a>
-            ${this.data.currentUser.role !== 'student' ? `<button class="btn btn-danger" onclick="app.deleteDoc('materials','${m.id}')">حذف</button>` : ''}
+            ${this.data.currentUser?.role !== 'student' ? `<button class="btn btn-danger" onclick="app.deleteDoc('materials','${m.id}')">حذف</button>` : ''}
           </div>
         </div>
       `).join('')}
@@ -1075,13 +1311,13 @@ const app = {
       await db.collection('materials').add({
         title, type: document.getElementById('mType').value, url,
         description: document.getElementById('mDesc').value,
-        uploadedBy: this.data.currentUser.username, uploadedAt: new Date().toISOString().split('T')[0]
+        uploadedBy: this.data.currentUser?.username || '', uploadedAt: new Date().toISOString().split('T')[0]
       });
       this.showToast('تم إضافة المحتوى'); this.closeModal();
     } catch(e) { this.showToast('خطأ في الحفظ','error'); }
   },
   /* =========================================================
-     10. EXAMS
+     11. EXAMS
      ========================================================= */
   renderExamsPage() {
     return `<div class="header-bar"><h2>📝 إدارة الاختبارات</h2><button class="btn btn-primary" onclick="app.showExamModal()">+ اختبار جديد</button></div>
@@ -1090,11 +1326,17 @@ const app = {
   renderExamsTable() {
     const wrap = document.getElementById('examsTableWrap');
     if (!wrap) return;
-    if (!this.data.exams.length) { wrap.innerHTML = '<div class="empty-state">لا توجد اختبارات.</div>'; return; }
-    let html = `<table><tr><th>العنوان</th><th>المدة</th><th>الأسئلة</th><th>الحالة</th><th>إجراءات</th></tr>`;
-    this.data.exams.forEach(e => {
+    const section = this.data.currentUser?.section;
+    const role = this.data.currentUser?.role;
+    let exams = this.data.exams;
+    if (role === 'student' && section) {
+      exams = exams.filter(e => e.section === section || !e.section);
+    }
+    if (!exams.length) { wrap.innerHTML = '<div class="empty-state">لا توجد اختبارات.</div>'; return; }
+    let html = `<table><tr><th>العنوان</th><th>القسم</th><th>المدة</th><th>الأسئلة</th><th>الحالة</th><th>إجراءات</th></tr>`;
+    exams.forEach(e => {
       const qCount = e.questions ? e.questions.length : 0;
-      html += `<tr><td><strong>${this.escapeHtml(e.title)}</strong></td><td>${e.duration} دقيقة</td><td>${qCount}</td>
+      html += `<tr><td><strong>${this.escapeHtml(e.title)}</strong></td><td>${this.escapeHtml(e.section || 'الكل')}</td><td>${e.duration} دقيقة</td><td>${qCount}</td>
         <td><span class="badge ${e.status==='منشور'?'badge-success':'badge-warning'}">${e.status||'مسودة'}</span></td>
         <td>
           <button class="btn btn-info" onclick="app.navigate('examQuestions','${e.id}')">الأسئلة</button>
@@ -1107,6 +1349,9 @@ const app = {
   showExamModal() {
     this.openModal(`<div class="modal"><h3>إضافة اختبار جديد</h3>
       <div class="form-group"><label>العنوان</label><input id="exTitle"></div>
+      <div class="form-group"><label>القسم المستهدف</label>
+        <select id="exSection">${this.timetableSections.map(s=>`<option value="${s}">${s}</option>`).join('')}</select>
+      </div>
       <div class="form-group"><label>المدة (دقيقة)</label><input type="number" id="exDuration" value="20"></div>
       <button class="btn btn-primary btn-block" onclick="app.saveExam()">💾 إنشاء</button>
       <button class="btn btn-secondary btn-block" onclick="app.closeModal()">إلغاء</button>
@@ -1115,9 +1360,10 @@ const app = {
   async saveExam() {
     const title = document.getElementById('exTitle').value.trim();
     const duration = parseInt(document.getElementById('exDuration').value) || 20;
+    const section = document.getElementById('exSection').value;
     if (!title) return this.showToast('يرجى إدخال عنوان الاختبار', 'error');
     try {
-      await db.collection('exams').add({ title, duration, questions: [], status: 'منشور', createdAt: new Date() });
+      await db.collection('exams').add({ title, duration, section, questions: [], status: 'منشور', createdAt: new Date() });
       this.showToast('تم إنشاء الاختبار'); this.closeModal();
     } catch(e) { this.showToast('خطأ','error'); }
   },
@@ -1168,18 +1414,22 @@ const app = {
     } catch(e) { this.showToast('خطأ','error'); }
   },
   /* =========================================================
-     11. STUDENT VIEWS
+     12. STUDENT VIEWS (FILTERED BY SECTION)
      ========================================================= */
   renderMyLessonsPage() {
-    return `<div class="header-bar"><h2>📖 حصصي القادمة</h2></div>
-      <div class="card"><div class="table-wrap"><table><tr><th>الدرس</th><th>التاريخ</th><th>الوقت</th></tr>
-        ${this.data.lessons.map(l => `<tr><td>${this.escapeHtml(l.title)}</td><td>${l.date||''}</td><td>${l.time||''}</td></tr>`).join('')}
+    const section = this.data.currentUser?.section;
+    const lessons = section ? this.data.lessons.filter(l => l.section === section) : this.data.lessons;
+    return `<div class="header-bar"><h2>📖 حصصي القادمة</h2><span class="badge badge-info">${this.escapeHtml(section || 'الكل')}</span></div>
+      <div class="card"><div class="table-wrap"><table><tr><th>الدرس</th><th>القسم</th><th>التاريخ</th><th>الوقت</th></tr>
+        ${lessons.length ? lessons.map(l => `<tr><td>${this.escapeHtml(l.title)}</td><td>${this.escapeHtml(l.section||'')}</td><td>${l.date||''}</td><td>${l.time||''}</td></tr>`).join('') : '<tr><td colspan="4" class="text-center" style="color:#888;">لا توجد حصص مسجلة لقسمك حالياً.</td></tr>'}
       </table></div></div>`;
   },
   renderMyExamsPage() {
-    return `<div class="header-bar"><h2>📝 اختباراتي المتاحة</h2></div>
-      <div class="card"><div class="table-wrap"><table><tr><th>الاختبار</th><th>المدة</th><th>إجراء</th></tr>
-        ${this.data.exams.map(e => `<tr><td>${this.escapeHtml(e.title)}</td><td>${e.duration} دقيقة</td><td><button class="btn btn-primary" onclick="app.navigate('takeExam','${e.id}')">بدء</button></td></tr>`).join('')}
+    const section = this.data.currentUser?.section;
+    const exams = section ? this.data.exams.filter(e => e.section === section || !e.section) : this.data.exams;
+    return `<div class="header-bar"><h2>📝 اختباراتي المتاحة</h2><span class="badge badge-info">${this.escapeHtml(section || 'الكل')}</span></div>
+      <div class="card"><div class="table-wrap"><table><tr><th>الاختبار</th><th>القسم</th><th>المدة</th><th>إجراء</th></tr>
+        ${exams.length ? exams.map(e => `<tr><td>${this.escapeHtml(e.title)}</td><td>${this.escapeHtml(e.section || 'الكل')}</td><td>${e.duration} دقيقة</td><td><button class="btn btn-primary" onclick="app.navigate('takeExam','${e.id}')">بدء</button></td></tr>`).join('') : '<tr><td colspan="4" class="text-center" style="color:#888;">لا توجد اختبارات متاحة لقسمك حالياً.</td></tr>'}
       </table></div></div>`;
   },
   renderTakeExamPage() {
@@ -1214,7 +1464,7 @@ const app = {
     this.navigate('myExams');
   },
   /* =========================================================
-     12. ABOUT
+     13. ABOUT
      ========================================================= */
   renderAboutPage() {
     return `<div class="header-bar"><h2>🏛️ عن المعهد</h2></div>
@@ -1229,7 +1479,7 @@ const app = {
       </div>`;
   },
   /* =========================================================
-     13. GENERAL DELETE
+     14. GENERAL DELETE
      ========================================================= */
   async deleteDoc(colName, docId) {
     if (!confirm('هل أنت متأكد من الحذف من السحابة؟')) return;
@@ -1237,7 +1487,7 @@ const app = {
     catch(e) { this.showToast('خطأ في الحذف','error'); }
   },
   /* =========================================================
-     14. INIT
+     15. INIT
      ========================================================= */
   init() {
     const params = new URLSearchParams(window.location.search);
@@ -1245,7 +1495,7 @@ const app = {
       this.startSync();
       setTimeout(() => this.showAttendanceRegistration(), 1000);
     } else {
-      document.getElementById('loginScreen').classList.remove('hidden');
+      this.checkAuth();
     }
   }
 };
