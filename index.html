@@ -2,125 +2,95 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>معهد الإمام سحنون للعلوم الشرعية — المنصة السحابية</title>
-
-  <!-- ===== SEO and Description ===== -->
-  <meta name="description" content="منصة معهد الإمام سحنون للعلوم الشرعية: تسجيل الطلاب والأساتذة، الإجازة والتصدر والتلقي، بيئة تعليمية متكاملة للتعليم الشرعي.">
-  <meta name="keywords" content="معهد الإمام سحنون, العلوم الشرعية, تعليم ديني, الإجازة, التصدر, التلقي, المقرئ, مدارس القرآن, الفقه, الحديث">
-  <meta name="author" content="معهد الإمام سحنون">
-  <meta name="robots" content="index, follow">
-  <meta name="format-detection" content="telephone=no">
-
-  <!-- ===== PWA and Mobile ===== -->
-  <meta name="theme-color" content="#0d47a1">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="معهد سحنون">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="application-name" content="معهد سحنون">
-  <meta name="msapplication-TileColor" content="#0d47a1">
-  <meta name="msapplication-TileImage" content="logo_192.png">
-
-  <!-- ===== Open Graph (Facebook, WhatsApp, Telegram...) ===== -->
-  <meta property="og:site_name" content="معهد الإمام سحنون">
-  <meta property="og:title" content="معهد الإمام سحنون للعلوم الشرعية">
-  <meta property="og:description" content="منصة معهد الإمام سحنون للعلوم الشرعية: تسجيل الطلاب والأساتذة، الإجازة والتصدر والتلقي، بيئة تعليمية متكاملة للتعليم الشرعي.">
-  <meta property="og:type" content="website">
-  <meta property="og:url" content="https://mourad-ms.github.io/dar-ibn-sahnun/">
-  <meta property="og:image" content="https://mourad-ms.github.io/dar-ibn-sahnun/og_image.png">
-  <meta property="og:image:width" content="1200">
-  <meta property="og:image:height" content="630">
-  <meta property="og:image:type" content="image/png">
-  <meta property="og:image:alt" content="شعار معهد الإمام سحنون للعلوم الشرعية">
-  <meta property="og:locale" content="ar_DZ">
-
-  <!-- ===== Twitter / X Cards ===== -->
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="معهد الإمام سحنون للعلوم الشرعية">
-  <meta name="twitter:description" content="منصة معهد الإمام سحنون للعلوم الشرعية: تسجيل الطلاب والأساتذة، الإجازة والتصدر والتلقي، بيئة تعليمية متكاملة.">
-  <meta name="twitter:image" content="https://mourad-ms.github.io/dar-ibn-sahnun/og_image.png">
-  <meta name="twitter:image:alt" content="شعار معهد الإمام سحنون للعلوم الشرعية">
-
-  <!-- ===== Favicon ===== -->
-  <link rel="shortcut icon" href="favicon.ico?v=2" type="image/x-icon">
-  <link rel="icon" type="image/png" sizes="16x16" href="logo_16.png?v=2">
-  <link rel="icon" type="image/png" sizes="32x32" href="logo_32.png?v=2">
-  <link rel="icon" type="image/png" sizes="192x192" href="logo_192.png?v=2">
-  <link rel="icon" type="image/png" sizes="512x512" href="logo_512.png?v=2">
-  <link rel="apple-touch-icon" sizes="180x180" href="logo_180.png?v=2">
-
-  <!-- ===== PWA Manifest ===== -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a5f2a">
+  <title>معهد الإمام سحنون للعلوم الشرعية</title>
+  <link rel="stylesheet" href="style.css">
   <link rel="manifest" href="manifest.json">
-
-  <!-- ===== External Scripts ===== -->
-  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <!-- Firebase SDK (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <!-- jsPDF for PDF export -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
-
-<link rel="stylesheet" href="style.css">
 </head>
-
 <body>
+  <!-- Toast Notification -->
+  <div id="toast" class="toast"></div>
 
-<!-- Toast -->
-<div id="toast" class="toast"></div>
-<!-- Mobile Menu Toggle -->
-<button class="menu-toggle" id="menuToggle" onclick="app.toggleMenu()">☰</button>
-<!-- Menu Overlay -->
-<div class="menu-overlay" id="menuOverlay" onclick="app.toggleMenu()"></div>
-<!-- ============ LOGIN SCREEN ============ -->
-<div id="loginScreen" class="login-screen">
-  <div class="login-card">
-    <div class="login-tabs">
-      <button class="login-tab active" id="tabUser" onclick="app.switchLoginTab('user')">تسجيل الدخول</button>
-      <button class="login-tab" id="tabAdmin" onclick="app.switchLoginTab('admin')">مدير النظام</button>
-    </div>
-    <div id="userLoginForm">
-      <h1>🕌 معهد الإمام سحنون</h1>
-      <p>للعلوم الشرعية - تسجيل الدخول</p>
-      <input type="text" id="loginUsername" placeholder="اسم المستخدم" autocomplete="username">
-      <input type="password" id="loginPassword" placeholder="كلمة المرور" autocomplete="current-password">
-      <label class="remember-label">
-        <input type="checkbox" id="rememberMe" checked> تذكرني (لا تُخرجني إلا بتسجيل خروج صريح)
-      </label>
-      <button onclick="app.login()">تسجيل الدخول</button>
-      <p style="margin-top:14px; font-size:0.82rem; color:#0d47a1; cursor:pointer; text-decoration:underline;" onclick="app.showForgotUserPassword()">🔐 نسيت كلمة المرور؟</p>
-    </div>
-    <div id="adminLoginForm" class="hidden">
-      <h1>🕌 معهد الإمام سحنون</h1>
-      <p>لوحة المدير - تسجيل الدخول</p>
-      <input type="email" id="adminEmail" placeholder="البريد الإلكتروني" autocomplete="email" dir="ltr">
-      <input type="password" id="adminPassword" placeholder="كلمة المرور" autocomplete="current-password">
-      <button onclick="app.adminLogin()">دخول المدير</button>
-      <p style="margin-top:14px; font-size:0.82rem; color:#0d47a1; cursor:pointer; text-decoration:underline;" onclick="app.showForgotAdminPassword()">🔐 نسيت كلمة المرور؟</p>
+  <!-- Login Screen -->
+  <div id="loginScreen" class="login-screen">
+    <div class="login-card">
+      <div class="logo">
+        <div class="logo-icon">🕌</div>
+        <h1>معهد الإمام سحنون</h1>
+        <p>للعلوم الشرعية</p>
+      </div>
+
+      <div class="login-tabs">
+        <div id="tabUser" class="login-tab active" onclick="app.switchLoginTab('user')">طالب / أستاذ</div>
+        <div id="tabAdmin" class="login-tab" onclick="app.switchLoginTab('admin')">المدير</div>
+      </div>
+
+      <div id="userLoginForm" class="login-form">
+        <div class="form-group">
+          <label>اسم المستخدم</label>
+          <input type="text" id="loginUsername" placeholder="أدخل اسم المستخدم" autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label>كلمة المرور</label>
+          <input type="password" id="loginPassword" placeholder="أدخل كلمة المرور" autocomplete="current-password">
+        </div>
+        <button class="btn btn-primary btn-block" onclick="app.login()">تسجيل الدخول</button>
+      </div>
+
+      <div id="adminLoginForm" class="login-form hidden">
+        <div class="form-group">
+          <label>البريد الإلكتروني</label>
+          <input type="email" id="adminEmail" placeholder="admin@example.com" autocomplete="email" dir="ltr">
+        </div>
+        <div class="form-group">
+          <label>كلمة المرور</label>
+          <input type="password" id="adminPassword" placeholder="أدخل كلمة المرور" autocomplete="current-password">
+        </div>
+        <button class="btn btn-primary btn-block" onclick="app.adminLogin()">دخول المدير</button>
+      </div>
+
+      <p class="login-footer">نظام معهد الإمام سحنون السحابي — جميع البيانات تُحفظ بأمان في Firebase</p>
     </div>
   </div>
-</div>
-<!-- ============ APP CONTAINER ============ -->
-<div id="appContainer" class="app-container hidden">
-  <div class="sidebar" id="sidebar">
-    <h2>🕌 المعهد الشرعي</h2>
-    <div id="navMenu"></div>
-    <div style="margin-top:24px; padding-top:16px; border-top:1px solid rgba(255,255,255,0.2);">
-      <div class="nav-item" onclick="app.logout()">🚪 تسجيل الخروج</div>
+
+  <!-- App Container -->
+  <div id="appContainer" class="app-container hidden">
+    <header class="app-header">
+      <button class="menu-btn" onclick="app.toggleMenu()" aria-label="القائمة">☰</button>
+      <div class="header-title">
+        <span class="header-icon">🕌</span>
+        <span>معهد الإمام سحنون</span>
+      </div>
+      <button class="logout-btn" onclick="app.logout()" aria-label="خروج">🚪</button>
+    </header>
+
+    <div class="app-body">
+      <aside id="sidebar" class="sidebar">
+        <div id="navMenu" class="nav-menu"></div>
+      </aside>
+      <main id="mainContent" class="main-content"></main>
     </div>
   </div>
-  <div class="main-content" id="mainContent"></div>
-</div>
-<script src="app.js"></script>
- 
 
-<!-- ===== Service Worker Registration ===== -->
-<script>
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('service-worker.js')
-      .then(() => console.log('Service Worker: مسجل ✅'))
-      .catch(err => console.log('Service Worker: فشل ❌', err));
-  }
-</script>
+  <!-- Mobile Menu Overlay -->
+  <div id="menuOverlay" class="menu-overlay" onclick="app.toggleMenu()"></div>
 
+  <!-- App Logic -->
+  <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js')
+        .then(function(reg) { console.log('SW registered:', reg.scope); })
+        .catch(function(err) { console.log('SW registration failed:', err); });
+    }
+  </script>
 </body>
 </html>
