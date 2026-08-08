@@ -97,6 +97,8 @@ const app = {
         this.showToast('اسم المستخدم أو كلمة المرور غير صحيحة', 'error');
         return;
       }
+      // تسجيل دخول مجهول لـ Firestore Auth (يفرض request.auth != null)
+      try { await firebase.auth().signInAnonymously(); } catch(e) { console.warn('Auth anon skipped', e); }
       this.data.currentUser = { uid: userDoc.id, ...userData };
       if (remember) {
         localStorage.setItem('sahnun_session', JSON.stringify({ uid: userDoc.id, username, role: userData.role }));
@@ -233,17 +235,26 @@ const app = {
           }
         });
       } else {
-        db.collection('users').doc(data.uid).get().then(doc => {
-          if (doc.exists) {
-            this.data.currentUser = { uid: doc.id, ...doc.data() };
-            this.enterApp();
+        firebase.auth().onAuthStateChanged(user => {
+          if (user) {
+            db.collection('users').doc(data.uid).get().then(doc => {
+              if (doc.exists) {
+                this.data.currentUser = { uid: doc.id, ...doc.data() };
+                this.enterApp();
+              } else {
+                localStorage.removeItem('sahnun_session');
+                firebase.auth().signOut().catch(()=>{});
+                document.getElementById('loginScreen').classList.remove('hidden');
+              }
+            }).catch(() => {
+              localStorage.removeItem('sahnun_session');
+              firebase.auth().signOut().catch(()=>{});
+              document.getElementById('loginScreen').classList.remove('hidden');
+            });
           } else {
             localStorage.removeItem('sahnun_session');
             document.getElementById('loginScreen').classList.remove('hidden');
           }
-        }).catch(() => {
-          localStorage.removeItem('sahnun_session');
-          document.getElementById('loginScreen').classList.remove('hidden');
         });
       }
     } catch(e) {
@@ -252,9 +263,7 @@ const app = {
     }
   },
   logout() {
-    if (this.data.currentUser?.role === 'admin') {
-      firebase.auth().signOut().catch(()=>{});
-    }
+    firebase.auth().signOut().catch(()=>{});
     localStorage.removeItem('sahnun_session');
     this.data.currentUser = null;
     this.data.currentPage = 'dashboard';
