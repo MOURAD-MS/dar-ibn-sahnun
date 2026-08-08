@@ -26,6 +26,7 @@ const app = {
     timerInterval: null,
     students: [], teachers: [], lessons: [], materials: [],
     exams: [], attendance: [], timetable: [], users: [],
+    stages: [], levels: [], sections: [], subjects: [], courses: [],
     menuOpen: false
   },
   /* ---------- Helpers ---------- */
@@ -54,13 +55,8 @@ const app = {
     this.data.menuOpen = !this.data.menuOpen;
     const sb = document.getElementById('sidebar');
     const ov = document.getElementById('menuOverlay');
-    if (this.data.menuOpen) {
-      sb.classList.add('open');
-      ov.classList.add('show');
-    } else {
-      sb.classList.remove('open');
-      ov.classList.remove('show');
-    }
+    if (this.data.menuOpen) { sb.classList.add('open'); ov.classList.add('show'); }
+    else { sb.classList.remove('open'); ov.classList.remove('show'); }
   },
   closeMenuIfMobile() {
     if (window.innerWidth <= 768) {
@@ -78,199 +74,50 @@ const app = {
   },
   /* ---------- Auth ---------- */
   async login() {
-    const username = document.getElementById('loginUsername').value.trim();
-    const password = document.getElementById('loginPassword').value;
-    const remember = document.getElementById('rememberMe').checked;
-    if (!username || !password) {
-      this.showToast('يرجى إدخال اسم المستخدم وكلمة المرور', 'error');
-      return;
-    }
+    const user = document.getElementById('loginUsername').value.trim().replace(/\s/g, '');
+    const pass = document.getElementById('loginPassword').value;
+    if (!user || !pass) { this.showToast('أدخل اسم المستخدم وكلمة المرور', 'error'); return; }
     try {
-      const snap = await db.collection('users').where('username','==',username).limit(1).get();
-      if (snap.empty) {
-        this.showToast('اسم المستخدم أو كلمة المرور غير صحيحة', 'error');
-        return;
-      }
-      const userDoc = snap.docs[0];
-      const userData = userDoc.data();
-      if (userData.password !== password) {
-        this.showToast('اسم المستخدم أو كلمة المرور غير صحيحة', 'error');
-        return;
-      }
-      // تسجيل دخول مجهول لـ Firestore Auth (يفرض request.auth != null)
-      try { await firebase.auth().signInAnonymously(); } catch(e) { console.warn('Auth anon skipped', e); }
-      this.data.currentUser = { uid: userDoc.id, ...userData };
-      if (remember) {
-        localStorage.setItem('sahnun_session', JSON.stringify({ uid: userDoc.id, username, role: userData.role }));
-      }
-      this.enterApp();
-    } catch(e) {
-      console.error(e);
-      this.showToast('خطأ في الاتصال، تأكد من الإنترنت', 'error');
-    }
+      await firebase.auth().signInAnonymously();
+    } catch(e) { console.log('anon auth ok'); }
+    try {
+      const snap = await db.collection('users').where('username', '==', user).where('password', '==', pass).limit(1).get();
+      if (snap.empty) { this.showToast('اسم المستخدم أو كلمة المرور غير صحيحة', 'error'); return; }
+      const u = { id: snap.docs[0].id, ...snap.docs[0].data() };
+      this.data.currentUser = u;
+      this.buildNav(); this.startSync(); this.navigate('dashboard');
+      document.getElementById('loginScreen').classList.add('hidden');
+      document.getElementById('appContainer').classList.remove('hidden');
+      this.showToast('مرحباً بك ' + u.name);
+    } catch(e) { this.showToast('خطأ في الاتصال', 'error'); }
   },
   async adminLogin() {
-    const email = document.getElementById('adminEmail').value.trim();
-    const password = document.getElementById('adminPassword').value;
-    if (!email || !password) {
-      this.showToast('يرجى إدخال البريد وكلمة المرور', 'error');
-      return;
-    }
+    const email = document.getElementById('adminEmail').value.trim().toLowerCase();
+    const pass = document.getElementById('adminPassword').value;
+    if (!email || !pass) { this.showToast('أدخل البريد وكلمة المرور', 'error'); return; }
     try {
-      const cred = await firebase.auth().signInWithEmailAndPassword(email, password);
-      const user = cred.user;
-      this.data.currentUser = { uid: user.uid, username: user.email, name: 'المدير', role: 'admin', email: user.email };
-      localStorage.setItem('sahnun_session', JSON.stringify({ uid: user.uid, username: user.email, role: 'admin' }));
-      this.enterApp();
-    } catch(e) {
-      console.error(e);
-      this.showToast('خطأ في البريد الإلكتروني أو كلمة المرور', 'error');
-    }
+      await firebase.auth().signInWithEmailAndPassword(email, pass);
+      const user = { name: 'المدير', role: 'admin', username: 'admin' };
+      this.data.currentUser = user;
+      this.buildNav(); this.startSync(); this.navigate('dashboard');
+      document.getElementById('loginScreen').classList.add('hidden');
+      document.getElementById('appContainer').classList.remove('hidden');
+      this.showToast('مرحباً أيها المدير');
+    } catch(e) { this.showToast('بيانات الدخول خاطئة', 'error'); }
   },
-  /* ---------- Password Reset ---------- */
-  showForgotAdminPassword() {
-    this.openModal(`<div class="modal"><h3>🔐 استعادة كلمة مرور المدير</h3>
-      <p style="color:#666; margin-bottom:12px; font-size:0.9rem;">أدخل بريدك المسجل في Firebase وسيُرسل إليك رابط إعادة التعيين.</p>
-      <div class="form-group"><label>البريد الإلكتروني</label><input type="email" id="forgotAdminEmail" placeholder="admin@example.com" dir="ltr"></div>
-      <button class="btn btn-primary btn-block" onclick="app.sendAdminPasswordReset()">📧 إرسال رابط الاستعادة</button>
-      <button class="btn btn-secondary btn-block" onclick="app.closeModal()">إلغاء</button>
-    </div>`);
-  },
-  async sendAdminPasswordReset() {
-    const email = document.getElementById('forgotAdminEmail').value.trim();
-    if (!email) return this.showToast('يرجى إدخال البريد الإلكتروني', 'error');
-    try {
-      await firebase.auth().sendPasswordResetEmail(email);
-      this.showToast('✅ تم إرسال رابط الاستعادة إلى بريدك الإلكتروني');
-      this.closeModal();
-    } catch(e) {
-      console.error(e);
-      this.showToast('⚠️ لم يتم العثور على هذا البريد أو هناك خطأ في الإرسال', 'error');
-    }
-  },
-  showForgotUserPassword() {
-    this.openModal(`<div class="modal"><h3>🔐 استعادة كلمة المرور</h3>
-      <p style="color:#666; margin-bottom:12px; font-size:0.9rem;">أدخل اسم المستخدم والبريد المسجل لإنشاء رمز استعادة.</p>
-      <div class="form-group"><label>اسم المستخدم</label><input type="text" id="forgotUsername" placeholder="اسم المستخدم" dir="ltr"></div>
-      <div class="form-group"><label>البريد الإلكتروني المسجل</label><input type="email" id="forgotUserEmail" placeholder="بريدك@example.com" dir="ltr"></div>
-      <button class="btn btn-primary btn-block" onclick="app.sendUserPasswordReset()">🔑 إنشاء رمز الاستعادة</button>
-      <button class="btn btn-secondary btn-block" onclick="app.closeModal()">إلغاء</button>
-    </div>`);
-  },
-  async sendUserPasswordReset() {
-    const username = document.getElementById('forgotUsername').value.trim().replace(/\s/g, '');
-    const email = document.getElementById('forgotUserEmail').value.trim().toLowerCase();
-    if (!username || !email) return this.showToast('يرجى ملء جميع الحقول', 'error');
-    try {
-      const snap = await db.collection('users').where('username', '==', username).limit(1).get();
-      if (snap.empty) return this.showToast('اسم المستخدم غير موجود', 'error');
-      const userDoc = snap.docs[0];
-      const userData = userDoc.data();
-      if ((userData.email || '').toLowerCase() !== email) {
-        return this.showToast('البريد الإلكتروني لا يتطابق مع السجل', 'error');
+  async checkAuth() {
+    firebase.auth().onAuthStateChanged(async user => {
+      if (!user) {
+        // Ensure we still have a Firebase Auth user for anonymous
+        try { await firebase.auth().signInAnonymously(); } catch(e) {}
       }
-      const token = Math.floor(100000 + Math.random() * 900000).toString();
-      const expires = new Date(Date.now() + 15 * 60 * 1000);
-      await db.collection('users').doc(userDoc.id).update({ resetToken: token, resetExpires: expires });
-      this.closeModal();
-      this.openModal(`<div class="modal"><h3>✅ تم إنشاء رمز الاستعادة</h3>
-        <p style="color:#666; margin-bottom:12px; font-size:0.9rem;">تم إنشاء رمز مؤقت صالح لـ 15 دقيقة. اكتبه وأدخله مع كلمة المرور الجديدة.</p>
-        <div style="background:#e8f5e9; border:2px dashed #1a5f2a; border-radius:12px; padding:16px; text-align:center; margin-bottom:16px;">
-          <div style="font-size:2rem; font-weight:bold; color:#1a5f2a; letter-spacing:8px;">${token}</div>
-          <div style="font-size:0.8rem; color:#666; margin-top:6px;">صالح حتى ${expires.toLocaleTimeString('ar-DZ')}</div>
-        </div>
-        <div class="form-group"><label>أدخل الرمز هنا للتأكيد</label><input type="text" id="verifyTokenInput" placeholder="123456" maxlength="6" dir="ltr"></div>
-        <div class="form-group"><label>كلمة المرور الجديدة (4 أرقام على الأقل)</label><input type="password" id="verifyNewPassword" placeholder="••••" autocomplete="new-password"></div>
-        <button class="btn btn-primary btn-block" onclick="app.verifyUserPasswordReset('${userDoc.id}')">🔑 تأكيد وتغيير كلمة المرور</button>
-      </div>`);
-    } catch(e) {
-      console.error(e);
-      this.showToast('خطأ في الاتصال أو البيانات', 'error');
-    }
+    });
   },
-  async verifyUserPasswordReset(userId) {
-    const token = document.getElementById('verifyTokenInput').value.trim();
-    const newPassword = document.getElementById('verifyNewPassword').value;
-    if (!token || !newPassword) return this.showToast('يرجى ملء جميع الحقول', 'error');
-    if (newPassword.length < 4) return this.showToast('كلمة المرور يجب أن تكون 4 أرقام على الأقل', 'error');
-    try {
-      const doc = await db.collection('users').doc(userId).get();
-      if (!doc.exists) return this.showToast('المستخدم غير موجود', 'error');
-      const data = doc.data();
-      if (data.resetToken !== token) return this.showToast('الرمز غير صحيح', 'error');
-      if (data.resetExpires && data.resetExpires.toDate() < new Date()) {
-        return this.showToast('انتهت صلاحية الرمز، ابدأ من جديد', 'error');
-      }
-      await db.collection('users').doc(userId).update({ password: newPassword, resetToken: firebase.firestore.FieldValue.delete(), resetExpires: firebase.firestore.FieldValue.delete() });
-      this.showToast('✅ تم تغيير كلمة المرور بنجاح! يمكنك الآن تسجيل الدخول');
-      this.closeModal();
-    } catch(e) {
-      console.error(e);
-      this.showToast('خطأ في التحديث', 'error');
-    }
-  },
-  enterApp() {
-    document.getElementById('loginScreen').classList.add('hidden');
-    document.getElementById('appContainer').classList.remove('hidden');
-    this.buildNav();
-    this.startSync();
-    this.navigate('dashboard');
-  },
-  checkAuth() {
-    const session = localStorage.getItem('sahnun_session');
-    if (!session) {
-      document.getElementById('loginScreen').classList.remove('hidden');
-      return;
-    }
-    try {
-      const data = JSON.parse(session);
-      if (data.role === 'admin') {
-        firebase.auth().onAuthStateChanged(user => {
-          if (user) {
-            this.data.currentUser = { uid: user.uid, username: user.email, name: 'المدير', role: 'admin', email: user.email };
-            this.enterApp();
-          } else {
-            localStorage.removeItem('sahnun_session');
-            document.getElementById('loginScreen').classList.remove('hidden');
-          }
-        });
-      } else {
-        firebase.auth().onAuthStateChanged(user => {
-          if (user) {
-            db.collection('users').doc(data.uid).get().then(doc => {
-              if (doc.exists) {
-                this.data.currentUser = { uid: doc.id, ...doc.data() };
-                this.enterApp();
-              } else {
-                localStorage.removeItem('sahnun_session');
-                firebase.auth().signOut().catch(()=>{});
-                document.getElementById('loginScreen').classList.remove('hidden');
-              }
-            }).catch(() => {
-              localStorage.removeItem('sahnun_session');
-              firebase.auth().signOut().catch(()=>{});
-              document.getElementById('loginScreen').classList.remove('hidden');
-            });
-          } else {
-            localStorage.removeItem('sahnun_session');
-            document.getElementById('loginScreen').classList.remove('hidden');
-          }
-        });
-      }
-    } catch(e) {
-      localStorage.removeItem('sahnun_session');
-      document.getElementById('loginScreen').classList.remove('hidden');
-    }
-  },
-  logout() {
-    firebase.auth().signOut().catch(()=>{});
-    localStorage.removeItem('sahnun_session');
-    this.data.currentUser = null;
-    this.data.currentPage = 'dashboard';
+  async logout() {
+    this.data.currentUser = null; this.data.currentPage = 'dashboard';
     document.getElementById('loginScreen').classList.remove('hidden');
     document.getElementById('appContainer').classList.add('hidden');
-    this.stopSync();
-    this.closeMenuIfMobile();
+    this.stopSync(); this.closeMenuIfMobile();
     document.getElementById('loginUsername').value = '';
     document.getElementById('loginPassword').value = '';
     document.getElementById('adminEmail').value = '';
@@ -282,6 +129,11 @@ const app = {
     if (!r) return;
     const items = [
       { id:'dashboard', label:'📊 الرئيسية', roles:['admin','teacher','student'] },
+      { id:'stages', label:'🏛️ المراحل', roles:['admin'] },
+      { id:'levels', label:'📐 المستويات', roles:['admin'] },
+      { id:'sections', label:'🏫 الأقسام', roles:['admin'] },
+      { id:'subjects', label:'📚 المواد', roles:['admin'] },
+      { id:'courses', label:'📖 المقررات', roles:['admin'] },
       { id:'students', label:'👨‍🎓 الطلاب', roles:['admin','teacher'] },
       { id:'teachers', label:'👨‍🏫 المدرسون', roles:['admin'] },
       { id:'users', label:'👥 إدارة المستخدمين', roles:['admin'] },
@@ -301,14 +153,12 @@ const app = {
   navigate(page, extra) {
     if (!this.data.currentUser) {
       this.showToast('الجلسة انتهت، سجّل الدخول من جديد', 'error');
-      this.logout();
-      return;
+      this.logout(); return;
     }
     this.data.currentPage = page;
     if (page === 'takeExam') { this.data.activeExamId = extra; }
     if (page === 'examQuestions') { this.data.activeExamId = extra; }
-    this.closeMenuIfMobile();
-    this.buildNav();
+    this.closeMenuIfMobile(); this.buildNav();
     const content = this.getPageContent(page);
     document.getElementById('mainContent').innerHTML = content;
     if (page === 'takeExam') { this.setupExamTimer(); }
@@ -322,6 +172,11 @@ const app = {
     if (page === 'examQuestions') { this.renderExamQuestionsList(); }
     if (page === 'lessons') { this.renderLessonsList(); }
     if (page === 'dashboard') { this.renderDashboardStats(); }
+    if (page === 'stages') { this.renderStagesList(); }
+    if (page === 'levels') { this.renderLevelsList(); }
+    if (page === 'sections') { this.renderSectionsList(); }
+    if (page === 'subjects') { this.renderSubjectsList(); }
+    if (page === 'courses') { this.renderCoursesList(); }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   },
   /* ---------- Cloud Sync ---------- */
@@ -335,7 +190,12 @@ const app = {
       db.collection('materials').onSnapshot(snap => { this.data.materials = snap.docs.map(d=>({id:d.id,...d.data()})); if(this.data.currentPage==='library') this.renderLibraryGrid(); }),
       db.collection('exams').onSnapshot(snap => { this.data.exams = snap.docs.map(d=>({id:d.id,...d.data()})); if(this.data.currentPage==='exams') this.renderExamsTable(); if(this.data.currentPage==='examQuestions') this.renderExamQuestionsList(); if(this.data.currentPage==='myExams') this.navigate('myExams'); }),
       db.collection('attendance').onSnapshot(snap => { this.data.attendance = snap.docs.map(d=>({id:d.id,...d.data()})); if(this.data.currentPage==='attendance') this.renderAttendanceList(); }),
-      db.collection('timetable').onSnapshot(snap => { this.data.timetable = snap.docs.map(d=>({id:d.id,...d.data()})); if(this.data.currentPage==='timetable') this.renderTimetableView(); })
+      db.collection('timetable').onSnapshot(snap => { this.data.timetable = snap.docs.map(d=>({id:d.id,...d.data()})); if(this.data.currentPage==='timetable') this.renderTimetableView(); }),
+      db.collection('stages').onSnapshot(snap => { this.data.stages = snap.docs.map(d=>({id:d.id,...d.data()})); if(this.data.currentPage==='stages') this.renderStagesList(); if(this.data.currentPage==='levels') this.renderLevelsList(); if(this.data.currentPage==='sections') this.renderSectionsList(); }),
+      db.collection('levels').onSnapshot(snap => { this.data.levels = snap.docs.map(d=>({id:d.id,...d.data()})); if(this.data.currentPage==='levels') this.renderLevelsList(); if(this.data.currentPage==='sections') this.renderSectionsList(); }),
+      db.collection('sections').onSnapshot(snap => { this.data.sections = snap.docs.map(d=>({id:d.id,...d.data()})); if(this.data.currentPage==='sections') this.renderSectionsList(); if(this.data.currentPage==='courses') this.renderCoursesList(); }),
+      db.collection('subjects').onSnapshot(snap => { this.data.subjects = snap.docs.map(d=>({id:d.id,...d.data()})); if(this.data.currentPage==='subjects') this.renderSubjectsList(); if(this.data.currentPage==='courses') this.renderCoursesList(); }),
+      db.collection('courses').onSnapshot(snap => { this.data.courses = snap.docs.map(d=>({id:d.id,...d.data()})); if(this.data.currentPage==='courses') this.renderCoursesList(); })
     ];
   },
   stopSync() {
@@ -360,6 +220,11 @@ const app = {
   getPageContent(page) {
     switch(page) {
       case 'dashboard': return this.renderDashboard();
+      case 'stages': return this.renderStagesPage();
+      case 'levels': return this.renderLevelsPage();
+      case 'sections': return this.renderSectionsPage();
+      case 'subjects': return this.renderSubjectsPage();
+      case 'courses': return this.renderCoursesPage();
       case 'students': return this.renderStudentsPage();
       case 'teachers': return this.renderTeachersPage();
       case 'users': return this.renderUsersPage();
@@ -399,15 +264,273 @@ const app = {
     const el = document.getElementById('dashStats');
     if (!el) return;
     el.innerHTML = `
+      <div class="stat-card"><div class="number">${this.data.stages.length}</div><div class="label">المراحل</div></div>
+      <div class="stat-card"><div class="number">${this.data.levels.length}</div><div class="label">المستويات</div></div>
+      <div class="stat-card"><div class="number">${this.data.sections.length}</div><div class="label">الأقسام</div></div>
       <div class="stat-card"><div class="number">${this.data.students.length}</div><div class="label">الطلاب</div></div>
       <div class="stat-card"><div class="number">${this.data.teachers.length}</div><div class="label">المدرسون</div></div>
-      <div class="stat-card"><div class="number">${this.data.lessons.length}</div><div class="label">الدروس</div></div>
-      <div class="stat-card"><div class="number">${this.data.exams.length}</div><div class="label">الاختبارات</div></div>
-      <div class="stat-card"><div class="number">${this.data.materials.length}</div><div class="label">المحتويات</div></div>
-      <div class="stat-card"><div class="number">${this.data.attendance.length}</div><div class="label">سجلات الحضور</div></div>`;
+      <div class="stat-card"><div class="number">${this.data.lessons.length}</div><div class="label">الدروس</div></div>`;
   },
   /* =========================================================
-     4. STUDENTS
+     4. STAGES MANAGEMENT
+     ========================================================= */
+  renderStagesPage() {
+    return `<div class="header-bar"><h2>🏛️ المراحل الدراسية</h2><button class="btn btn-primary" onclick="app.showStageModal()">+ مرحلة جديدة</button></div>
+      <div class="card"><div class="table-wrap" id="stagesTableWrap"></div></div>`;
+  },
+  renderStagesList() {
+    const wrap = document.getElementById('stagesTableWrap');
+    if (!wrap) return;
+    if (!this.data.stages.length) { wrap.innerHTML = '<div class="empty-state">لا توجد مراحل مسجلة. أضف مرحلة أولاً.</div>'; return; }
+    let html = `<table><tr><th>المرحلة</th><th>المستويات</th><th>إجراءات</th></tr>`;
+    this.data.stages.forEach(s => {
+      const levelsCount = this.data.levels.filter(l => l.stageId === s.id).length;
+      html += `<tr><td><strong>${this.escapeHtml(s.name)}</strong></td><td><span class="badge badge-info">${levelsCount} مستوى</span></td>
+        <td><button class="btn btn-danger" onclick="app.deleteDoc('stages','${s.id}')">حذف</button></td></tr>`;
+    });
+    html += '</table>';
+    wrap.innerHTML = html;
+  },
+  showStageModal() {
+    this.openModal(`<div class="modal"><h3>إضافة مرحلة دراسية</h3>
+      <div class="form-group"><label>اسم المرحلة</label><input id="stageName" placeholder="مثال: المتوسط، الثانوي، الجامعي..."></div>
+      <button class="btn btn-primary btn-block" onclick="app.saveStage()">💾 حفظ</button>
+      <button class="btn btn-secondary btn-block" onclick="app.closeModal()">إلغاء</button>
+    </div>`);
+  },
+  async saveStage() {
+    const name = document.getElementById('stageName').value.trim();
+    if (!name) return this.showToast('يرجى إدخال اسم المرحلة', 'error');
+    try {
+      await db.collection('stages').add({ name, createdAt: new Date() });
+      this.showToast('تم إضافة المرحلة'); this.closeModal();
+    } catch(e) { this.showToast('خطأ في الحفظ', 'error'); }
+  },
+  /* =========================================================
+     5. LEVELS MANAGEMENT
+     ========================================================= */
+  renderLevelsPage() {
+    return `<div class="header-bar"><h2>📐 المستويات الدراسية</h2><button class="btn btn-primary" onclick="app.showLevelModal()">+ مستوى جديد</button></div>
+      <div class="card"><div class="table-wrap" id="levelsTableWrap"></div></div>`;
+  },
+  renderLevelsList() {
+    const wrap = document.getElementById('levelsTableWrap');
+    if (!wrap) return;
+    if (!this.data.levels.length) { wrap.innerHTML = '<div class="empty-state">لا توجد مستويات مسجلة. أضف مستوى أولاً.</div>'; return; }
+    let html = `<table><tr><th>المستوى</th><th>المرحلة</th><th>الأقسام</th><th>إجراءات</th></tr>`;
+    this.data.levels.forEach(l => {
+      const stage = this.data.stages.find(s => s.id === l.stageId);
+      const sectionsCount = this.data.sections.filter(s => s.levelId === l.id).length;
+      html += `<tr><td><strong>${this.escapeHtml(l.name)}</strong></td><td>${this.escapeHtml(stage ? stage.name : '—')}</td>
+        <td><span class="badge badge-info">${sectionsCount} قسم</span></td>
+        <td><button class="btn btn-danger" onclick="app.deleteDoc('levels','${l.id}')">حذف</button></td></tr>`;
+    });
+    html += '</table>';
+    wrap.innerHTML = html;
+  },
+  showLevelModal() {
+    const stagesOpts = this.data.stages.map(s => `<option value="${s.id}">${this.escapeHtml(s.name)}</option>`).join('');
+    if (!stagesOpts) { this.showToast('أضف مرحلة أولاً', 'error'); return; }
+    this.openModal(`<div class="modal"><h3>إضافة مستوى دراسي</h3>
+      <div class="form-group"><label>اسم المستوى</label><input id="levelName" placeholder="مثال: السنة الأولى، السنة الثانية..."></div>
+      <div class="form-group"><label>المرحلة الأم</label><select id="levelStageId">${stagesOpts}</select></div>
+      <button class="btn btn-primary btn-block" onclick="app.saveLevel()">💾 حفظ</button>
+      <button class="btn btn-secondary btn-block" onclick="app.closeModal()">إلغاء</button>
+    </div>`);
+  },
+  async saveLevel() {
+    const name = document.getElementById('levelName').value.trim();
+    const stageId = document.getElementById('levelStageId').value;
+    if (!name || !stageId) return this.showToast('يرجى ملء جميع الحقول', 'error');
+    try {
+      await db.collection('levels').add({ name, stageId, createdAt: new Date() });
+      this.showToast('تم إضافة المستوى'); this.closeModal();
+    } catch(e) { this.showToast('خطأ في الحفظ', 'error'); }
+  },
+  /* =========================================================
+     6. SECTIONS MANAGEMENT
+     ========================================================= */
+  renderSectionsPage() {
+    return `<div class="header-bar"><h2>🏫 الأقسام الدراسية</h2><button class="btn btn-primary" onclick="app.showSectionModal()">+ قسم جديد</button></div>
+      <div class="card"><div class="table-wrap" id="sectionsTableWrap"></div></div>`;
+  },
+  renderSectionsList() {
+    const wrap = document.getElementById('sectionsTableWrap');
+    if (!wrap) return;
+    if (!this.data.sections.length) { wrap.innerHTML = '<div class="empty-state">لا توجد أقسام مسجلة. أضف قسم أولاً.</div>'; return; }
+    let html = `<table><tr><th>القسم</th><th>المستوى</th><th>المرحلة</th><th>الطلاب</th><th>إجراءات</th></tr>`;
+    this.data.sections.forEach(s => {
+      const level = this.data.levels.find(l => l.id === s.levelId);
+      const stage = level ? this.data.stages.find(st => st.id === level.stageId) : null;
+      const studentsCount = this.data.students.filter(st => st.sectionId === s.id).length;
+      html += `<tr><td><strong>${this.escapeHtml(s.name)}</strong></td>
+        <td>${this.escapeHtml(level ? level.name : '—')}</td>
+        <td>${this.escapeHtml(stage ? stage.name : '—')}</td>
+        <td><span class="badge badge-info">${studentsCount} طالب</span></td>
+        <td><button class="btn btn-danger" onclick="app.deleteDoc('sections','${s.id}')">حذف</button></td></tr>`;
+    });
+    html += '</table>';
+    wrap.innerHTML = html;
+  },
+  showSectionModal() {
+    const levelsOpts = this.data.levels.map(l => {
+      const stage = this.data.stages.find(s => s.id === l.stageId);
+      return `<option value="${l.id}">${this.escapeHtml(l.name)} (${this.escapeHtml(stage ? stage.name : '—')})</option>`;
+    }).join('');
+    if (!levelsOpts) { this.showToast('أضف مستوى أولاً', 'error'); return; }
+    this.openModal(`<div class="modal"><h3>إضافة قسم دراسي</h3>
+      <div class="form-group"><label>اسم القسم</label><input id="sectionName" placeholder="مثال: القسم أ، القسم ب..."></div>
+      <div class="form-group"><label>المستوى الأم</label><select id="sectionLevelId">${levelsOpts}</select></div>
+      <button class="btn btn-primary btn-block" onclick="app.saveSection()">💾 حفظ</button>
+      <button class="btn btn-secondary btn-block" onclick="app.closeModal()">إلغاء</button>
+    </div>`);
+  },
+  async saveSection() {
+    const name = document.getElementById('sectionName').value.trim();
+    const levelId = document.getElementById('sectionLevelId').value;
+    if (!name || !levelId) return this.showToast('يرجى ملء جميع الحقول', 'error');
+    try {
+      await db.collection('sections').add({ name, levelId, createdAt: new Date() });
+      this.showToast('تم إضافة القسم'); this.closeModal();
+    } catch(e) { this.showToast('خطأ في الحفظ', 'error'); }
+  },
+  /* =========================================================
+     7. SUBJECTS MANAGEMENT
+     ========================================================= */
+  renderSubjectsPage() {
+    return `<div class="header-bar"><h2>📚 المواد العلمية</h2><button class="btn btn-primary" onclick="app.showSubjectModal()">+ مادة جديدة</button></div>
+      <div class="card"><div class="table-wrap" id="subjectsTableWrap"></div></div>`;
+  },
+  renderSubjectsList() {
+    const wrap = document.getElementById('subjectsTableWrap');
+    if (!wrap) return;
+    if (!this.data.subjects.length) { wrap.innerHTML = '<div class="empty-state">لا توجد مواد مسجلة. أضف مادة أولاً.</div>'; return; }
+    let html = `<table><tr><th>المادة</th><th>المقررات المرتبطة</th><th>إجراءات</th></tr>`;
+    this.data.subjects.forEach(s => {
+      const coursesCount = this.data.courses.filter(c => c.subjectId === s.id).length;
+      html += `<tr><td><strong>${this.escapeHtml(s.name)}</strong></td><td><span class="badge badge-info">${coursesCount} مقرر</span></td>
+        <td><button class="btn btn-danger" onclick="app.deleteDoc('subjects','${s.id}')">حذف</button></td></tr>`;
+    });
+    html += '</table>';
+    wrap.innerHTML = html;
+  },
+  showSubjectModal() {
+    this.openModal(`<div class="modal"><h3>إضافة مادة علمية</h3>
+      <div class="form-group"><label>اسم المادة</label><input id="subjectName" placeholder="مثال: الفقه المالكي، الحديث، التفسير..."></div>
+      <button class="btn btn-primary btn-block" onclick="app.saveSubject()">💾 حفظ</button>
+      <button class="btn btn-secondary btn-block" onclick="app.closeModal()">إلغاء</button>
+    </div>`);
+  },
+  async saveSubject() {
+    const name = document.getElementById('subjectName').value.trim();
+    if (!name) return this.showToast('يرجى إدخال اسم المادة', 'error');
+    try {
+      await db.collection('subjects').add({ name, createdAt: new Date() });
+      this.showToast('تم إضافة المادة'); this.closeModal();
+    } catch(e) { this.showToast('خطأ في الحفظ', 'error'); }
+  },
+  /* =========================================================
+     8. COURSES MANAGEMENT
+     ========================================================= */
+  renderCoursesPage() {
+    return `<div class="header-bar"><h2>📖 المقررات الدراسية</h2><button class="btn btn-primary" onclick="app.showCourseModal()">+ مقرر جديد</button></div>
+      <div class="card"><div class="table-wrap" id="coursesTableWrap"></div></div>`;
+  },
+  renderCoursesList() {
+    const wrap = document.getElementById('coursesTableWrap');
+    if (!wrap) return;
+    if (!this.data.courses.length) { wrap.innerHTML = '<div class="empty-state">لا توجد مقررات مسجلة. أضف مقرر أولاً.</div>'; return; }
+    let html = `<table><tr><th>المقرر</th><th>المادة</th><th>القسم</th><th>المستوى</th><th>المرحلة</th><th>إجراءات</th></tr>`;
+    this.data.courses.forEach(c => {
+      const subject = this.data.subjects.find(s => s.id === c.subjectId);
+      const section = this.data.sections.find(s => s.id === c.sectionId);
+      const level = section ? this.data.levels.find(l => l.id === section.levelId) : null;
+      const stage = level ? this.data.stages.find(s => s.id === level.stageId) : null;
+      html += `<tr><td><strong>${this.escapeHtml(c.name || subject?.name || '—')}</strong></td>
+        <td>${this.escapeHtml(subject ? subject.name : '—')}</td>
+        <td>${this.escapeHtml(section ? section.name : '—')}</td>
+        <td>${this.escapeHtml(level ? level.name : '—')}</td>
+        <td>${this.escapeHtml(stage ? stage.name : '—')}</td>
+        <td><button class="btn btn-danger" onclick="app.deleteDoc('courses','${c.id}')">حذف</button></td></tr>`;
+    });
+    html += '</table>';
+    wrap.innerHTML = html;
+  },
+  showCourseModal() {
+    const subjectsOpts = this.data.subjects.map(s => `<option value="${s.id}">${this.escapeHtml(s.name)}</option>`).join('');
+    const sectionsOpts = this.data.sections.map(s => {
+      const level = this.data.levels.find(l => l.id === s.levelId);
+      const stage = level ? this.data.stages.find(st => st.id === level.stageId) : null;
+      return `<option value="${s.id}">${this.escapeHtml(s.name)} (${this.escapeHtml(level ? level.name : '—')} - ${this.escapeHtml(stage ? stage.name : '—')})</option>`;
+    }).join('');
+    if (!subjectsOpts) { this.showToast('أضف مادة أولاً', 'error'); return; }
+    if (!sectionsOpts) { this.showToast('أضف قسم أولاً', 'error'); return; }
+    this.openModal(`<div class="modal"><h3>إضافة مقرر دراسي</h3>
+      <div class="form-group"><label>المادة</label><select id="courseSubjectId">${subjectsOpts}</select></div>
+      <div class="form-group"><label>القسم</label><select id="courseSectionId">${sectionsOpts}</select></div>
+      <button class="btn btn-primary btn-block" onclick="app.saveCourse()">💾 حفظ</button>
+      <button class="btn btn-secondary btn-block" onclick="app.closeModal()">إلغاء</button>
+    </div>`);
+  },
+  async saveCourse() {
+    const subjectId = document.getElementById('courseSubjectId').value;
+    const sectionId = document.getElementById('courseSectionId').value;
+    if (!subjectId || !sectionId) return this.showToast('يرجى اختيار المادة والقسم', 'error');
+    const subject = this.data.subjects.find(s => s.id === subjectId);
+    const name = subject ? subject.name : 'مقرر';
+    try {
+      await db.collection('courses').add({ name, subjectId, sectionId, createdAt: new Date() });
+      this.showToast('تم إضافة المقرر'); this.closeModal();
+    } catch(e) { this.showToast('خطأ في الحفظ', 'error'); }
+  },
+  /* ---------- Dynamic Section Dropdown Helpers ---------- */
+  buildSectionsSelect(id, selectedVal, includeEmpty, emptyLabel) {
+    let html = '';
+    if (includeEmpty) html += `<option value="">${emptyLabel || '-- اختر القسم --'}</option>`;
+    this.data.stages.forEach(st => {
+      const stageLevels = this.data.levels.filter(l => l.stageId === st.id);
+      if (stageLevels.length) {
+        html += `<optgroup label="${this.escapeHtml(st.name)}">`;
+        stageLevels.forEach(l => {
+          const levelSections = this.data.sections.filter(s => s.levelId === l.id);
+          levelSections.forEach(s => {
+            html += `<option value="${s.id}" ${selectedVal === s.id ? 'selected' : ''}>${this.escapeHtml(l.name)} - ${this.escapeHtml(s.name)}</option>`;
+          });
+        });
+        html += `</optgroup>`;
+      }
+    });
+    return html;
+  },
+  buildSectionsSelectOldStyle() {
+    let html = '<option value="">-- اختر القسم --</option>';
+    this.data.stages.forEach(st => {
+      const stageLevels = this.data.levels.filter(l => l.stageId === st.id);
+      if (stageLevels.length) {
+        stageLevels.forEach(l => {
+          const levelSections = this.data.sections.filter(s => s.levelId === l.id);
+          if (levelSections.length) {
+            html += `<optgroup label="${this.escapeHtml(st.name)} - ${this.escapeHtml(l.name)}">`;
+            levelSections.forEach(s => {
+              html += `<option value="${s.id}">${this.escapeHtml(s.name)}</option>`;
+            });
+            html += `</optgroup>`;
+          }
+        });
+      }
+    });
+    return html;
+  },
+  getSectionName(sectionId) {
+    if (!sectionId) return 'غير محدد';
+    const section = this.data.sections.find(s => s.id === sectionId);
+    if (!section) return sectionId;
+    const level = this.data.levels.find(l => l.id === section.levelId);
+    const stage = level ? this.data.stages.find(s => s.id === level.stageId) : null;
+    return `${this.escapeHtml(stage ? stage.name + ' - ' : '')}${this.escapeHtml(level ? level.name + ' - ' : '')}${this.escapeHtml(section.name)}`;
+  },
+  /* =========================================================
+     9. STUDENTS
      ========================================================= */
   renderStudentsPage() {
     return `<div class="header-bar"><h2>👨‍🎓 إدارة الطلاب</h2><button class="btn btn-primary" onclick="app.showStudentModal()">+ طالب جديد</button></div>
@@ -418,10 +541,10 @@ const app = {
     const wrap = document.getElementById('studentsTableWrap');
     if (!wrap) return;
     if (!this.data.students.length) { wrap.innerHTML = '<div class="empty-state">لا يوجد طلاب مسجلون بعد.</div>'; return; }
-    let html = `<table><tr><th>الاسم</th><th>القسم / المرحلة</th><th>الحالة</th><th>إجراءات</th></tr>`;
+    let html = `<table><tr><th>الاسم</th><th>القسم</th><th>الحالة</th><th>إجراءات</th></tr>`;
     this.data.students.forEach(s => {
       html += `<tr><td><strong>${this.escapeHtml(s.name)}</strong></td>
-        <td><span class="badge badge-primary">${this.escapeHtml(s.section || 'غير محدد')}</span></td>
+        <td><span class="badge badge-primary">${this.getSectionName(s.sectionId)}</span></td>
         <td><span class="badge ${s.active!==false?'badge-success':'badge-danger'}">${s.active!==false?'نشط':'غير نشط'}</span></td>
         <td><button class="btn btn-danger" onclick="app.deleteDoc('students','${s.id}')">حذف</button></td></tr>`;
     });
@@ -431,30 +554,13 @@ const app = {
   filterStudents() {
     const q = document.getElementById('studentSearch').value.toLowerCase();
     const rows = document.querySelectorAll('#studentsTableWrap table tr:not(:first-child)');
-    rows.forEach(r => {
-      const text = r.textContent.toLowerCase();
-      r.style.display = text.includes(q) ? '' : 'none';
-    });
+    rows.forEach(r => { const text = r.textContent.toLowerCase(); r.style.display = text.includes(q) ? '' : 'none'; });
   },
   showStudentModal() {
+    const sectionsSelect = this.buildSectionsSelectOldStyle();
     this.openModal(`<div class="modal"><h3>تسجيل طالب جديد</h3>
       <div class="form-group"><label>الاسم الكامل</label><input id="stName" placeholder="مثال: أحمد بن محمد"></div>
-      <div class="form-group"><label>القسم / المرحلة</label>
-        <select id="stSection">
-          <option value="">-- اختر القسم --</option>
-          <option value="السنة الأولى - المتوسط">السنة الأولى - المتوسط</option>
-          <option value="السنة الثانية - المتوسط">السنة الثانية - المتوسط</option>
-          <option value="السنة الثالثة - المتوسط">السنة الثالثة - المتوسط</option>
-          <option value="السنة الأولى - الثانوي">السنة الأولى - الثانوي</option>
-          <option value="السنة الثانية - الثانوي">السنة الثانية - الثانوي</option>
-          <option value="السنة الثالثة - الثانوي">السنة الثالثة - الثانوي</option>
-          <option value="المرحلة الجامعية - الأولى">المرحلة الجامعية - الأولى</option>
-          <option value="المرحلة الجامعية - الثانية">المرحلة الجامعية - الثانية</option>
-          <option value="المرحلة الجامعية - الثالثة">المرحلة الجامعية - الثالثة</option>
-          <option value="المرحلة الجامعية - الرابعة">المرحلة الجامعية - الرابعة</option>
-          <option value="الدراسات العليا">الدراسات العليا</option>
-        </select>
-      </div>
+      <div class="form-group"><label>القسم / المرحلة</label><select id="stSectionId">${sectionsSelect}</select></div>
       <div class="form-group"><label>رقم الهاتف (اختياري)</label><input id="stPhone" placeholder="0555..." dir="ltr"></div>
       <button class="btn btn-primary btn-block" onclick="app.saveStudent()">💾 حفظ في السحابة</button>
       <button class="btn btn-secondary btn-block" onclick="app.closeModal()">إلغاء</button>
@@ -462,18 +568,17 @@ const app = {
   },
   async saveStudent() {
     const name = document.getElementById('stName').value.trim();
-    const section = document.getElementById('stSection').value;
+    const sectionId = document.getElementById('stSectionId').value;
     const phone = document.getElementById('stPhone').value.trim();
     if (!name) return this.showToast('يرجى إدخال اسم الطالب', 'error');
-    if (!section) return this.showToast('يرجى اختيار القسم / المرحلة', 'error');
+    if (!sectionId) return this.showToast('يرجى اختيار القسم', 'error');
     try {
-      await db.collection('students').add({ name, section, phone: phone || '', active: true, createdAt: new Date() });
-      this.showToast('تم إضافة الطالب بنجاح');
-      this.closeModal();
+      await db.collection('students').add({ name, sectionId, phone: phone || '', active: true, createdAt: new Date() });
+      this.showToast('تم إضافة الطالب بنجاح'); this.closeModal();
     } catch(e) { console.error(e); this.showToast('خطأ في الحفظ', 'error'); }
   },
   /* =========================================================
-     5. TEACHERS
+     10. TEACHERS
      ========================================================= */
   renderTeachersPage() {
     return `<div class="header-bar"><h2>👨‍🏫 المدرسون</h2><button class="btn btn-primary" onclick="app.showTeacherModal()">+ مدرس جديد</button></div>
@@ -513,7 +618,7 @@ const app = {
     } catch(e) { this.showToast('خطأ في الحفظ','error'); }
   },
   /* =========================================================
-     6. USERS MANAGEMENT
+     11. USERS MANAGEMENT
      ========================================================= */
   renderUsersPage() {
     return `<div class="header-bar"><h2>👥 إدارة المستخدمين</h2><button class="btn btn-primary" onclick="app.showUserModal()">+ مستخدم جديد</button></div>
@@ -531,7 +636,7 @@ const app = {
         <td dir="ltr">${this.escapeHtml(u.username)}</td>
         <td dir="ltr">${this.escapeHtml(u.email || '—')}</td>
         <td><span class="badge badge-info">${roleLabel}</span></td>
-        <td><span class="badge badge-primary">${this.escapeHtml(u.section || '—')}</span></td>
+        <td><span class="badge badge-primary">${this.getSectionName(u.sectionId)}</span></td>
         <td>
           <button class="btn btn-warning" onclick="app.showResetPasswordModal('${u.id}','${this.escapeHtml(u.name)}')">🔑 إعادة تعيين</button>
           <button class="btn btn-danger" onclick="app.deleteDoc('users','${u.id}')">حذف</button>
@@ -543,12 +648,10 @@ const app = {
   filterUsers() {
     const q = document.getElementById('userSearch').value.toLowerCase();
     const rows = document.querySelectorAll('#usersTableWrap table tr:not(:first-child)');
-    rows.forEach(r => {
-      const text = r.textContent.toLowerCase();
-      r.style.display = text.includes(q) ? '' : 'none';
-    });
+    rows.forEach(r => { const text = r.textContent.toLowerCase(); r.style.display = text.includes(q) ? '' : 'none'; });
   },
   showUserModal() {
+    const sectionsSelect = this.buildSectionsSelectOldStyle();
     this.openModal(`<div class="modal"><h3>إضافة مستخدم جديد</h3>
       <div class="form-group"><label>الاسم الكامل</label><input id="uName" placeholder="مثال: أحمد بن محمد"></div>
       <div class="form-group"><label>اسم المستخدم (فريد، بدون مسافات)</label><input id="uUsername" placeholder="ahmed_ben_mohamed" dir="ltr"></div>
@@ -561,21 +664,7 @@ const app = {
         </select>
       </div>
       <div class="form-group" id="uSectionWrap">
-        <label>القسم / المرحلة</label>
-        <select id="uSection">
-          <option value="">-- اختر القسم --</option>
-          <option value="السنة الأولى - المتوسط">السنة الأولى - المتوسط</option>
-          <option value="السنة الثانية - المتوسط">السنة الثانية - المتوسط</option>
-          <option value="السنة الثالثة - المتوسط">السنة الثالثة - المتوسط</option>
-          <option value="السنة الأولى - الثانوي">السنة الأولى - الثانوي</option>
-          <option value="السنة الثانية - الثانوي">السنة الثانية - الثانوي</option>
-          <option value="السنة الثالثة - الثانوي">السنة الثالثة - الثانوي</option>
-          <option value="المرحلة الجامعية - الأولى">المرحلة الجامعية - الأولى</option>
-          <option value="المرحلة الجامعية - الثانية">المرحلة الجامعية - الثانية</option>
-          <option value="المرحلة الجامعية - الثالثة">المرحلة الجامعية - الثالثة</option>
-          <option value="المرحلة الجامعية - الرابعة">المرحلة الجامعية - الرابعة</option>
-          <option value="الدراسات العليا">الدراسات العليا</option>
-        </select>
+        <label>القسم / المرحلة</label><select id="uSectionId">${sectionsSelect}</select>
       </div>
       <button class="btn btn-primary btn-block" onclick="app.saveUser()">💾 إنشاء المستخدم</button>
       <button class="btn btn-secondary btn-block" onclick="app.closeModal()">إلغاء</button>
@@ -592,18 +681,17 @@ const app = {
     const email = document.getElementById('uEmail').value.trim().toLowerCase();
     const password = document.getElementById('uPassword').value;
     const role = document.getElementById('uRole').value;
-    const section = role === 'student' ? document.getElementById('uSection').value : '';
+    const sectionId = role === 'student' ? document.getElementById('uSectionId').value : '';
     if (!name || !username || !password) return this.showToast('يرجى ملء جميع الحقول الإلزامية', 'error');
     if (password.length < 4) return this.showToast('كلمة المرور يجب أن تكون 4 أرقام على الأقل', 'error');
-    if (role === 'student' && !section) return this.showToast('يرجى اختيار القسم للطالب', 'error');
+    if (role === 'student' && !sectionId) return this.showToast('يرجى اختيار القسم للطالب', 'error');
     try {
       const existing = await db.collection('users').where('username','==',username).limit(1).get();
       if (!existing.empty) return this.showToast('اسم المستخدم مستخدم بالفعل، اختر اسماً آخر', 'error');
-      const data = { name, username, password, role, section: section || '', createdAt: new Date() };
+      const data = { name, username, password, role, sectionId: sectionId || '', createdAt: new Date() };
       if (email) data.email = email;
       await db.collection('users').add(data);
-      this.showToast('تم إنشاء المستخدم بنجاح');
-      this.closeModal();
+      this.showToast('تم إنشاء المستخدم بنجاح'); this.closeModal();
     } catch(e) { console.error(e); this.showToast('خطأ في الحفظ', 'error'); }
   },
   showResetPasswordModal(userId, userName) {
@@ -618,26 +706,20 @@ const app = {
     if (!newPassword || newPassword.length < 4) return this.showToast('كلمة المرور قصيرة جداً', 'error');
     try {
       await db.collection('users').doc(userId).update({ password: newPassword });
-      this.showToast('تم تغيير كلمة المرور بنجاح');
-      this.closeModal();
+      this.showToast('تم تغيير كلمة المرور بنجاح'); this.closeModal();
     } catch(e) { this.showToast('خطأ في التحديث', 'error'); }
   },
   /* =========================================================
-     7. WEEKLY TIMETABLE
+     12. WEEKLY TIMETABLE (Updated for dynamic sections)
      ========================================================= */
-  timetableSections: ['السنة الأولى - المتوسط','السنة الثانية - المتوسط','السنة الثالثة - المتوسط','السنة الأولى - الثانوي','السنة الثانية - الثانوي','السنة الثالثة - الثانوي','المرحلة الجامعية - الأولى','المرحلة الجامعية - الثانية','المرحلة الجامعية - الثالثة','المرحلة الجامعية - الرابعة','الدراسات العليا'],
   timetableDays: ['السبت','الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس'],
   timetableSlots: ['08:00','09:30','11:00','13:00','14:30','16:00'],
   renderTimetablePage() {
     const isStudent = this.data.currentUser?.role === 'student';
-    const sections = this.timetableSections;
-    const studentSection = this.data.currentUser?.section;
+    const studentSection = this.data.currentUser?.sectionId;
     return `<div class="header-bar"><h2>📅 الجدول الأسبوعي</h2>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        ${!isStudent ? `<select id="ttSectionFilter" class="search-box" style="max-width:220px; margin:0;" onchange="app.renderTimetableView()">
-          <option value="all">جميع الأقسام</option>
-          ${sections.map(s=>`<option value="${s}">${s}</option>`).join('')}
-        </select>
+        ${!isStudent ? `<select id="ttSectionFilter" class="search-box" style="max-width:260px; margin:0;" onchange="app.renderTimetableView()"><option value="all">جميع الأقسام</option>${this.buildSectionsSelect('ttSectionFilter', '', false, '')}</select>
         <button class="btn btn-primary" onclick="app.showTimetableModal()">+ إضافة حصة</button>` : 
         `<input type="hidden" id="ttSectionFilter" value="${studentSection||'all'}">`}
       </div>
@@ -648,18 +730,18 @@ const app = {
     const card = document.getElementById('timetableCard');
     if (!card) return;
     const sectionFilter = document.getElementById('ttSectionFilter')?.value || 'all';
-    const userSection = this.data.currentUser?.role === 'student' ? this.data.currentUser?.section : null;
+    const userSection = this.data.currentUser?.role === 'student' ? this.data.currentUser?.sectionId : null;
     const effectiveFilter = userSection || sectionFilter;
-    const entries = this.data.timetable.filter(e => effectiveFilter==='all' || e.section===effectiveFilter);
+    const entries = this.data.timetable.filter(e => effectiveFilter==='all' || e.sectionId===effectiveFilter);
     let html = `<div style="overflow-x:auto;"><div class="timetable-grid">`;
     html += `<div class="timetable-header">الوقت / اليوم</div>`;
     this.timetableDays.forEach(d => html += `<div class="timetable-header">${d}</div>`);
     this.timetableSlots.forEach(slot => {
       html += `<div class="timetable-time">${slot}</div>`;
       this.timetableDays.forEach(day => {
-        const entry = entries.find(e => e.day===day && e.time===slot && (effectiveFilter==='all' || e.section===effectiveFilter));
+        const entry = entries.find(e => e.day===day && e.time===slot && (effectiveFilter==='all' || e.sectionId===effectiveFilter));
         if (entry) {
-          html += `<div class="timetable-cell" onclick="app.showTimetableModal('${entry.id}')"><div class="lesson-title">${this.escapeHtml(entry.title)}</div><div class="lesson-meta">${this.escapeHtml(entry.teacher||'')} | ${this.escapeHtml(entry.section)}</div></div>`;
+          html += `<div class="timetable-cell" onclick="app.showTimetableModal('${entry.id}')"><div class="lesson-title">${this.escapeHtml(entry.title)}</div><div class="lesson-meta">${this.escapeHtml(entry.teacher||'')} | ${this.getSectionName(entry.sectionId)}</div></div>`;
         } else {
           html += `<div class="timetable-cell empty">—</div>`;
         }
@@ -674,7 +756,7 @@ const app = {
       this.timetableSlots.forEach(slot => {
         const entry = dayEntries.find(e => e.time === slot);
         if (entry) {
-          html += `<div class="tt-slot" onclick="app.showTimetableModal('${entry.id}')"><div><div class="tt-lesson">${this.escapeHtml(entry.title)}</div><div class="tt-meta">${this.escapeHtml(entry.teacher||'')} | ${this.escapeHtml(entry.section)}</div></div><div class="tt-time">${slot}</div></div>`;
+          html += `<div class="tt-slot" onclick="app.showTimetableModal('${entry.id}')"><div><div class="tt-lesson">${this.escapeHtml(entry.title)}</div><div class="tt-meta">${this.escapeHtml(entry.teacher||'')} | ${this.getSectionName(entry.sectionId)}</div></div><div class="tt-time">${slot}</div></div>`;
         } else if (effectiveFilter === 'all') {
           html += `<div class="tt-slot"><div class="tt-lesson" style="color:#aaa; font-weight:normal;">— لا توجد حصة —</div><div class="tt-time">${slot}</div></div>`;
         }
@@ -686,13 +768,12 @@ const app = {
   },
   showTimetableModal(entryId) {
     const isStudent = this.data.currentUser?.role === 'student';
-    if (isStudent) return; // Students can't edit
+    if (isStudent) return;
     const entry = entryId ? this.data.timetable.find(e => e.id === entryId) : null;
+    const sectionsSelect = this.buildSectionsSelect('ttSection', entry ? entry.sectionId : '', false, '');
     this.openModal(`<div class="modal"><h3>${entry ? 'تعديل الحصة' : 'إضافة حصة للجدول'}</h3>
       <div class="form-group"><label>المادة / الدرس</label><input id="ttTitle" value="${entry ? this.escapeHtml(entry.title) : ''}"></div>
-      <div class="form-group"><label>القسم</label>
-        <select id="ttSection">${this.timetableSections.map(s=>`<option value="${s}" ${entry && entry.section===s?'selected':''}>${s}</option>`).join('')}</select>
-      </div>
+      <div class="form-group"><label>القسم</label><select id="ttSection">${sectionsSelect}</select></div>
       <div class="form-group"><label>اليوم</label>
         <select id="ttDay">${this.timetableDays.map(d=>`<option value="${d}" ${entry && entry.day===d?'selected':''}>${d}</option>`).join('')}</select>
       </div>
@@ -708,13 +789,13 @@ const app = {
   },
   async saveTimetableEntry(entryId) {
     const title = document.getElementById('ttTitle').value.trim();
-    const section = document.getElementById('ttSection').value;
+    const sectionId = document.getElementById('ttSection').value;
     const day = document.getElementById('ttDay').value;
     const time = document.getElementById('ttTime').value;
     const teacher = document.getElementById('ttTeacher').value.trim();
     const room = document.getElementById('ttRoom').value.trim();
-    if (!title || !section || !day || !time) return this.showToast('يرجى ملء جميع الحقول الإلزامية', 'error');
-    const payload = { title, section, day, time, teacher, room, updatedAt: new Date() };
+    if (!title || !sectionId || !day || !time) return this.showToast('يرجى ملء جميع الحقول الإلزامية', 'error');
+    const payload = { title, sectionId, day, time, teacher, room, updatedAt: new Date() };
     try {
       if (entryId) {
         await db.collection('timetable').doc(entryId).update(payload);
@@ -725,7 +806,7 @@ const app = {
     } catch(e) { this.showToast('خطأ في الحفظ','error'); }
   },
   /* =========================================================
-     8. LESSONS & ATTENDANCE LINKS
+     13. LESSONS & ATTENDANCE LINKS (Updated for dynamic sections)
      ========================================================= */
   renderLessonsPage() {
     return `<div class="header-bar"><h2>📚 إدارة الدروس</h2><button class="btn btn-primary" onclick="app.showLessonModal()">+ درس جديد</button></div>
@@ -737,7 +818,7 @@ const app = {
     if (!this.data.lessons.length) { wrap.innerHTML = '<div class="empty-state">لا توجد دروس مسجلة.</div>'; return; }
     let html = `<table><tr><th>الدرس</th><th>القسم</th><th>التاريخ</th><th>رابط الحضور</th><th>إجراءات</th></tr>`;
     this.data.lessons.forEach(l => {
-      html += `<tr><td><strong>${this.escapeHtml(l.title)}</strong></td><td>${this.escapeHtml(l.section||'')}</td><td>${l.date||''}</td>
+      html += `<tr><td><strong>${this.escapeHtml(l.title)}</strong></td><td>${this.getSectionName(l.sectionId)}</td><td>${l.date||''}</td>
         <td><button class="btn btn-info" onclick="app.copyLessonLink('${l.id}')">📋 نسخ الرابط</button></td>
         <td><button class="btn btn-danger" onclick="app.deleteDoc('lessons','${l.id}')">حذف</button></td></tr>`;
     });
@@ -751,25 +832,18 @@ const app = {
   copyLessonLink(lessonId) {
     const link = this.generateLessonLink(lessonId);
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(link).then(() => {
-        this.showToast('تم نسخ رابط الحضور! يمكنك لصقه في واتساب أو تليجرام');
-      }).catch(() => this.fallbackCopy(link));
-    } else {
-      this.fallbackCopy(link);
-    }
+      navigator.clipboard.writeText(link).then(() => { this.showToast('تم نسخ رابط الحضور! يمكنك لصقه في واتساب أو تليجرام'); }).catch(() => this.fallbackCopy(link));
+    } else { this.fallbackCopy(link); }
   },
   fallbackCopy(link) {
-    const ta = document.createElement('textarea');
-    ta.value = link; document.body.appendChild(ta);
-    ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+    const ta = document.createElement('textarea'); ta.value = link; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
     this.showToast('تم نسخ رابط الحضور! يمكنك لصقه في واتساب أو تليجرام');
   },
   showLessonModal() {
+    const sectionsSelect = this.buildSectionsSelectOldStyle();
     this.openModal(`<div class="modal"><h3>إضافة درس جديد</h3>
       <div class="form-group"><label>عنوان الدرس</label><input id="lsTitle"></div>
-      <div class="form-group"><label>القسم المستهدف</label>
-        <select id="lsSection">${this.timetableSections.map(s=>`<option value="${s}">${s}</option>`).join('')}</select>
-      </div>
+      <div class="form-group"><label>القسم المستهدف</label><select id="lsSection">${sectionsSelect}</select></div>
       <div class="form-group"><label>التاريخ</label><input type="date" id="lsDate"></div>
       <div class="form-group"><label>الوقت</label><input type="time" id="lsTime"></div>
       <button class="btn btn-primary btn-block" onclick="app.saveLesson()">💾 حفظ</button>
@@ -778,17 +852,17 @@ const app = {
   },
   async saveLesson() {
     const title = document.getElementById('lsTitle').value.trim();
-    const section = document.getElementById('lsSection').value;
+    const sectionId = document.getElementById('lsSection').value;
     const date = document.getElementById('lsDate').value;
     const time = document.getElementById('lsTime').value;
     if (!title || !date) return this.showToast('يرجى ملء العنوان والتاريخ', 'error');
     try {
-      await db.collection('lessons').add({ title, section, date, time, createdAt: new Date() });
+      await db.collection('lessons').add({ title, sectionId, date, time, createdAt: new Date() });
       this.showToast('تم إضافة الدرس'); this.closeModal();
     } catch(e) { this.showToast('خطأ في الحفظ','error'); }
   },
   /* =========================================================
-     9. ATTENDANCE MANAGEMENT
+     14. ATTENDANCE MANAGEMENT
      ========================================================= */
   renderAttendancePage() {
     return `<div class="header-bar"><h2>✅ سجلات الحضور والغياب</h2>
@@ -805,9 +879,7 @@ const app = {
     const select = document.getElementById('attLessonFilter');
     if (!wrap) return;
     if (select && select.options.length <= 1) {
-      this.data.lessons.forEach(l => {
-        select.add(new Option(this.escapeHtml(l.title), l.id));
-      });
+      this.data.lessons.forEach(l => { select.add(new Option(this.escapeHtml(l.title), l.id)); });
     }
     const filter = select ? select.value : 'all';
     let rows = this.data.attendance;
@@ -818,7 +890,7 @@ const app = {
       const lesson = this.data.lessons.find(l => l.id === a.lessonId);
       html += `<tr><td>${idx+1}</td><td>${this.escapeHtml(lesson ? lesson.title : a.lessonId || 'عام')}</td>
         <td><strong>${this.escapeHtml(a.studentName || 'غير معروف')}</strong></td>
-        <td><span class="badge badge-primary">${this.escapeHtml(a.studentSection || 'غير محدد')}</span></td>
+        <td><span class="badge badge-primary">${this.getSectionName(a.studentSectionId)}</span></td>
         <td>${this.formatDate(a.timestamp)}</td></tr>`;
     });
     html += '</table>';
@@ -840,14 +912,11 @@ const app = {
     <tbody>`;
     rows.forEach((a, idx) => {
       const lesson = this.data.lessons.find(l => l.id === a.lessonId);
-      htmlTable += `<tr><td style="padding:8px;">${idx+1}</td><td style="padding:8px;">${this.escapeHtml(lesson?lesson.title:'')}</td><td style="padding:8px;">${this.escapeHtml(a.studentName||'')}</td><td style="padding:8px;">${this.escapeHtml(a.studentSection||'')}</td><td style="padding:8px;">${this.formatDate(a.timestamp)}</td></tr>`;
+      htmlTable += `<tr><td style="padding:8px;">${idx+1}</td><td style="padding:8px;">${this.escapeHtml(lesson?lesson.title:'')}</td><td style="padding:8px;">${this.escapeHtml(a.studentName||'')}</td><td style="padding:8px;">${this.getSectionName(a.studentSectionId)}</td><td style="padding:8px;">${this.formatDate(a.timestamp)}</td></tr>`;
     });
     htmlTable += `</tbody></table></body></html>`;
     const blob = new Blob(['\ufeff'+htmlTable], {type:'application/msword'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `حضور_${lessonName}.doc`;
-    a.click();
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `حضور_${lessonName}.doc`; a.click();
     this.showToast('تم تصدير ملف Word');
   },
   exportAttendanceToPDF() {
@@ -858,19 +927,16 @@ const app = {
     const lessonName = filter==='all' ? 'جميع الدروس' : (this.data.lessons.find(l=>l.id===filter)?.title || filter);
     const body = rows.map((a, idx) => {
       const lesson = this.data.lessons.find(l => l.id === a.lessonId);
-      return [idx+1, lesson?lesson.title:'', a.studentName||'', a.studentSection||'', this.formatDate(a.timestamp)];
+      return [idx+1, lesson?lesson.title:'', a.studentName||'', this.getSectionName(a.studentSectionId), this.formatDate(a.timestamp)];
     });
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: 'landscape' });
-    doc.setFontSize(16);
-    doc.text(`كشف حضور - ${lessonName}`, 14, 15);
-    doc.setFontSize(10);
-    doc.text('معهد الإمام سحنون للعلوم الشرعية', 14, 22);
+    doc.setFontSize(16); doc.text(`كشف حضور - ${lessonName}`, 14, 15);
+    doc.setFontSize(10); doc.text('معهد الإمام سحنون للعلوم الشرعية', 14, 22);
     doc.autoTable({ head: [['#','الدرس','الطالب','القسم','التاريخ']], body, startY: 28, styles: { font: 'Arial', halign: 'right' }, headStyles: { fillColor: [26,95,42] } });
     doc.save(`حضور_${lessonName}.pdf`);
     this.showToast('تم تصدير ملف PDF');
   },
-  // Public self-registration via URL
   showAttendanceRegistration() {
     const params = new URLSearchParams(window.location.search);
     const lessonId = params.get('attendanceLesson');
@@ -880,42 +946,28 @@ const app = {
       document.body.innerHTML = '<div style="padding:40px; text-align:center; font-family:Segoe UI,Tahoma,Geneva,Verdana,sans-serif;"><h2>⚠️ الدرس غير موجود</h2></div>';
       return;
     }
+    const sectionsSelect = this.buildSectionsSelectOldStyle();
     document.body.innerHTML = `
     <div class="public-page">
       <h2>🕌 معهد الإمام سحنون</h2>
       <p>تسجيل حضور للدرس: <strong>${this.escapeHtml(lesson.title)}</strong></p>
-      <div class="form-group">
-        <label>الاسم الكامل</label>
-        <input id="pubName" placeholder="أدخل اسمك الكامل">
-      </div>
-      <div class="form-group">
-        <label>القسم / المرحلة</label>
-        <select id="pubSection">
-          <option value="">-- اختر قسمك --</option>
-          ${this.timetableSections.map(s=>`<option value="${s}">${s}</option>`).join('')}
-        </select>
-      </div>
+      <div class="form-group"><label>الاسم الكامل</label><input id="pubName" placeholder="أدخل اسمك الكامل"></div>
+      <div class="form-group"><label>القسم / المرحلة</label><select id="pubSection">${sectionsSelect}</select></div>
       <button id="pubBtn" onclick="app.submitPublicAttendance('${lessonId}')">✅ تأكيد الحضور</button>
       <p style="margin-top:18px; font-size:0.85rem; color:#888;">سيتم تسجيل حضورك في النظام السحابي مباشرة.</p>
     </div>`;
   },
   async submitPublicAttendance(lessonId) {
     const name = document.getElementById('pubName').value.trim();
-    const section = document.getElementById('pubSection').value;
-    if (!name || !section) return this.showToast('يرجى إدخال الاسم واختيار القسم', 'error');
+    const sectionId = document.getElementById('pubSection').value;
+    if (!name || !sectionId) return this.showToast('يرجى إدخال الاسم واختيار القسم', 'error');
     try {
-      await db.collection('attendance').add({
-        lessonId, studentName: name, studentSection: section,
-        timestamp: new Date(), source: 'link'
-      });
-      document.body.innerHTML = `<div class="public-page">
-        <h2 style="color:#28a745;">✅ تم تسجيل حضورك بنجاح!</h2>
-        <p style="color:#666; margin-top:12px;">بارك الله فيك يا ${this.escapeHtml(name)}</p>
-      </div>`;
+      await db.collection('attendance').add({ lessonId, studentName: name, studentSectionId: sectionId, timestamp: new Date(), source: 'link' });
+      document.body.innerHTML = `<div class="public-page"><h2 style="color:#28a745;">✅ تم تسجيل حضورك بنجاح!</h2><p style="color:#666; margin-top:12px;">بارك الله فيك يا ${this.escapeHtml(name)}</p></div>`;
     } catch(e) { this.showToast('حدث خطأ أثناء التسجيل، حاول مرة أخرى.', 'error'); }
   },
   /* =========================================================
-     10. LIBRARY
+     15. LIBRARY
      ========================================================= */
   renderLibraryPage() {
     return `<div class="header-bar"><h2>📖 المكتبة السحابية</h2>
@@ -973,16 +1025,12 @@ const app = {
     const url = document.getElementById('mUrl').value.trim();
     if (!title || !url) return this.showToast('الرجاء إدخال العنوان والرابط', 'error');
     try {
-      await db.collection('materials').add({
-        title, type: document.getElementById('mType').value, url,
-        description: document.getElementById('mDesc').value,
-        uploadedBy: this.data.currentUser?.username || '', uploadedAt: new Date().toISOString().split('T')[0]
-      });
+      await db.collection('materials').add({ title, type: document.getElementById('mType').value, url, description: document.getElementById('mDesc').value, uploadedBy: this.data.currentUser?.username || '', uploadedAt: new Date().toISOString().split('T')[0] });
       this.showToast('تم إضافة المحتوى'); this.closeModal();
     } catch(e) { this.showToast('خطأ في الحفظ','error'); }
   },
   /* =========================================================
-     11. EXAMS
+     16. EXAMS (Updated for dynamic sections)
      ========================================================= */
   renderExamsPage() {
     return `<div class="header-bar"><h2>📝 إدارة الاختبارات</h2><button class="btn btn-primary" onclick="app.showExamModal()">+ اختبار جديد</button></div>
@@ -991,17 +1039,17 @@ const app = {
   renderExamsTable() {
     const wrap = document.getElementById('examsTableWrap');
     if (!wrap) return;
-    const section = this.data.currentUser?.section;
+    const sectionId = this.data.currentUser?.sectionId;
     const role = this.data.currentUser?.role;
     let exams = this.data.exams;
-    if (role === 'student' && section) {
-      exams = exams.filter(e => e.section === section || !e.section);
+    if (role === 'student' && sectionId) {
+      exams = exams.filter(e => e.sectionId === sectionId || !e.sectionId);
     }
     if (!exams.length) { wrap.innerHTML = '<div class="empty-state">لا توجد اختبارات.</div>'; return; }
     let html = `<table><tr><th>العنوان</th><th>القسم</th><th>المدة</th><th>الأسئلة</th><th>الحالة</th><th>إجراءات</th></tr>`;
     exams.forEach(e => {
       const qCount = e.questions ? e.questions.length : 0;
-      html += `<tr><td><strong>${this.escapeHtml(e.title)}</strong></td><td>${this.escapeHtml(e.section || 'الكل')}</td><td>${e.duration} دقيقة</td><td>${qCount}</td>
+      html += `<tr><td><strong>${this.escapeHtml(e.title)}</strong></td><td>${this.getSectionName(e.sectionId)}</td><td>${e.duration} دقيقة</td><td>${qCount}</td>
         <td><span class="badge ${e.status==='منشور'?'badge-success':'badge-warning'}">${e.status||'مسودة'}</span></td>
         <td>
           <button class="btn btn-info" onclick="app.navigate('examQuestions','${e.id}')">الأسئلة</button>
@@ -1012,11 +1060,10 @@ const app = {
     wrap.innerHTML = html;
   },
   showExamModal() {
+    const sectionsSelect = this.buildSectionsSelect('exSection', '', true, 'جميع الأقسام');
     this.openModal(`<div class="modal"><h3>إضافة اختبار جديد</h3>
       <div class="form-group"><label>العنوان</label><input id="exTitle"></div>
-      <div class="form-group"><label>القسم المستهدف</label>
-        <select id="exSection">${this.timetableSections.map(s=>`<option value="${s}">${s}</option>`).join('')}</select>
-      </div>
+      <div class="form-group"><label>القسم المستهدف</label><select id="exSection">${sectionsSelect}</select></div>
       <div class="form-group"><label>المدة (دقيقة)</label><input type="number" id="exDuration" value="20"></div>
       <button class="btn btn-primary btn-block" onclick="app.saveExam()">💾 إنشاء</button>
       <button class="btn btn-secondary btn-block" onclick="app.closeModal()">إلغاء</button>
@@ -1025,10 +1072,10 @@ const app = {
   async saveExam() {
     const title = document.getElementById('exTitle').value.trim();
     const duration = parseInt(document.getElementById('exDuration').value) || 20;
-    const section = document.getElementById('exSection').value;
+    const sectionId = document.getElementById('exSection').value;
     if (!title) return this.showToast('يرجى إدخال عنوان الاختبار', 'error');
     try {
-      await db.collection('exams').add({ title, duration, section, questions: [], status: 'منشور', createdAt: new Date() });
+      await db.collection('exams').add({ title, duration, sectionId: sectionId || '', questions: [], status: 'منشور', createdAt: new Date() });
       this.showToast('تم إنشاء الاختبار'); this.closeModal();
     } catch(e) { this.showToast('خطأ','error'); }
   },
@@ -1079,22 +1126,22 @@ const app = {
     } catch(e) { this.showToast('خطأ','error'); }
   },
   /* =========================================================
-     12. STUDENT VIEWS (FILTERED BY SECTION)
+     17. STUDENT VIEWS (Updated for dynamic sections)
      ========================================================= */
   renderMyLessonsPage() {
-    const section = this.data.currentUser?.section;
-    const lessons = section ? this.data.lessons.filter(l => l.section === section) : this.data.lessons;
-    return `<div class="header-bar"><h2>📖 حصصي القادمة</h2><span class="badge badge-info">${this.escapeHtml(section || 'الكل')}</span></div>
+    const sectionId = this.data.currentUser?.sectionId;
+    const lessons = sectionId ? this.data.lessons.filter(l => l.sectionId === sectionId) : this.data.lessons;
+    return `<div class="header-bar"><h2>📖 حصصي القادمة</h2><span class="badge badge-info">${this.getSectionName(sectionId)}</span></div>
       <div class="card"><div class="table-wrap"><table><tr><th>الدرس</th><th>القسم</th><th>التاريخ</th><th>الوقت</th></tr>
-        ${lessons.length ? lessons.map(l => `<tr><td>${this.escapeHtml(l.title)}</td><td>${this.escapeHtml(l.section||'')}</td><td>${l.date||''}</td><td>${l.time||''}</td></tr>`).join('') : '<tr><td colspan="4" class="text-center" style="color:#888;">لا توجد حصص مسجلة لقسمك حالياً.</td></tr>'}
+        ${lessons.length ? lessons.map(l => `<tr><td>${this.escapeHtml(l.title)}</td><td>${this.getSectionName(l.sectionId)}</td><td>${l.date||''}</td><td>${l.time||''}</td></tr>`).join('') : '<tr><td colspan="4" class="text-center" style="color:#888;">لا توجد حصص مسجلة لقسمك حالياً.</td></tr>'}
       </table></div></div>`;
   },
   renderMyExamsPage() {
-    const section = this.data.currentUser?.section;
-    const exams = section ? this.data.exams.filter(e => e.section === section || !e.section) : this.data.exams;
-    return `<div class="header-bar"><h2>📝 اختباراتي المتاحة</h2><span class="badge badge-info">${this.escapeHtml(section || 'الكل')}</span></div>
+    const sectionId = this.data.currentUser?.sectionId;
+    const exams = sectionId ? this.data.exams.filter(e => e.sectionId === sectionId || !e.sectionId) : this.data.exams;
+    return `<div class="header-bar"><h2>📝 اختباراتي المتاحة</h2><span class="badge badge-info">${this.getSectionName(sectionId)}</span></div>
       <div class="card"><div class="table-wrap"><table><tr><th>الاختبار</th><th>القسم</th><th>المدة</th><th>إجراء</th></tr>
-        ${exams.length ? exams.map(e => `<tr><td>${this.escapeHtml(e.title)}</td><td>${this.escapeHtml(e.section || 'الكل')}</td><td>${e.duration} دقيقة</td><td><button class="btn btn-primary" onclick="app.navigate('takeExam','${e.id}')">بدء</button></td></tr>`).join('') : '<tr><td colspan="4" class="text-center" style="color:#888;">لا توجد اختبارات متاحة لقسمك حالياً.</td></tr>'}
+        ${exams.length ? exams.map(e => `<tr><td>${this.escapeHtml(e.title)}</td><td>${this.getSectionName(e.sectionId)}</td><td>${e.duration} دقيقة</td><td><button class="btn btn-primary" onclick="app.navigate('takeExam','${e.id}')">بدء</button></td></tr>`).join('') : '<tr><td colspan="4" class="text-center" style="color:#888;">لا توجد اختبارات متاحة لقسمك حالياً.</td></tr>'}
       </table></div></div>`;
   },
   renderTakeExamPage() {
@@ -1129,7 +1176,7 @@ const app = {
     this.navigate('myExams');
   },
   /* =========================================================
-     13. ABOUT
+     18. ABOUT
      ========================================================= */
   renderAboutPage() {
     return `<div class="header-bar"><h2>🏛️ عن المعهد</h2></div>
@@ -1144,7 +1191,7 @@ const app = {
       </div>`;
   },
   /* =========================================================
-     14. GENERAL DELETE
+     19. GENERAL DELETE
      ========================================================= */
   async deleteDoc(colName, docId) {
     if (!confirm('هل أنت متأكد من الحذف من السحابة؟')) return;
@@ -1152,16 +1199,16 @@ const app = {
     catch(e) { this.showToast('خطأ في الحذف','error'); }
   },
   /* =========================================================
-     15. INIT
+     20. INIT
      ========================================================= */
   init() {
     const params = new URLSearchParams(window.location.search);
     if (params.get('attendanceLesson')) {
       this.startSync();
-      setTimeout(() => this.showAttendanceRegistration(), 1000);
+      setTimeout(() => this.showAttendanceRegistration(), 1500);
     } else {
       this.checkAuth();
     }
   }
 };
-document.addEventListener('DOMContentLoaded', () => app.init());
+app.init();
