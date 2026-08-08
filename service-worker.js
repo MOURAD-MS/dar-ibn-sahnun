@@ -1,78 +1,70 @@
-// Service Worker - معهد الإمام سحنون
-// يسمح بتثبيت التطبيق واستخدامه بدون إنترنت (Offline)
-
-const CACHE_NAME = 'sahnoun-app-v1';
-
-// الملفات الأساسية التي تُخزَّن للعمل offline
-const urlsToCache = [
+const CACHE_NAME = 'sahnoun-institute-v1';
+const STATIC_ASSETS = [
   './',
   './index.html',
-  './manifest.json',
-  './logo_16.png',
-  './logo_32.png',
-  './logo_192.png',
-  './logo_512.png',
-  './logo_180.png',
-  './favicon.ico'
+  './style.css',
+  './app.js',
+  './manifest.json'
 ];
 
-// عند التثبيت (Install) - تخزين الملفات
+// Install: cache the app shell
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('تم فتح Cache');
-        return cache.addAll(urlsToCache);
-      })
-      .then(() => self.skipWaiting()) // تفعيل فوري
+      .then((cache) => cache.addAll(STATIC_ASSETS))
+      .then(() => self.skipWaiting())
   );
 });
 
-// عند التفعيل (Activate) - حذف الإصدارات القديمة من Cache
+// Activate: clean up old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            console.log('حذف Cache قديم:', cacheName);
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
+    caches.keys().then((cacheNames) =>
+      Promise.all(
+        cacheNames
+          .filter((name) => name !== CACHE_NAME)
+          .map((name) => caches.delete(name))
+      )
+    ).then(() => self.clients.claim())
   );
 });
 
-// عند طلب موارد (Fetch) - التحقق من Cache أولاً
+// Fetch: cache-first for static assets, network-first for Firestore/Auth
 self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
+
+  // Skip non-GET requests and Firebase/Google APIs
+  if (request.method !== 'GET') return;
+  if (url.origin.includes('googleapis.com') ||
+      url.origin.includes('gstatic.com') ||
+      url.origin.includes('firebase')) {
+    return; // Let browser handle Firebase requests normally
+  }
+
   event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        // إن وجد في Cache، أعرضه
-        if (response) {
-          return response;
-        }
-        // وإلا اذهب للشبكة (Network)
-        return fetch(event.request)
-          .then((networkResponse) => {
-            // تجاهل الطلبات غير الصالحة أو من مواقع خارجية
-            if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
-              return networkResponse;
-            }
-            // تخزين نسخة في Cache للمرة القادمة
-            const responseToCache = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, responseToCache);
-            });
-            return networkResponse;
-          })
-          .catch(() => {
-            // إذا فشلت الشبكة ولم يوجد في Cache، أعرض صفحة offline بسيطة
-            if (event.request.mode === 'navigate') {
-              return caches.match('./index.html');
-            }
-          });
-      })
+    caches.match(request).then((cachedResponse) => {
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+      return fetch(request)
+        .then((networkResponse) => {
+          // Cache new static assets
+          if (networkResponse && networkResponse.status === 200 &&
+              (request.destination === 'style' ||
+               request.destination === 'script' ||
+               request.destination === 'document')) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return networkResponse;
+        })
+        .catch(() => {
+          // Fallback for HTML navigation
+          if (request.mode === 'navigate') {
+            return caches.match('./index.html');
+          }
+        });
+    })
   );
 });
