@@ -405,7 +405,7 @@ tr:active { background:#f0f8f2; }
         <input type="checkbox" id="rememberMe" checked> تذكرني (لا تُخرجني إلا بتسجيل خروج صريح)
       </label>
       <button onclick="app.login()">تسجيل الدخول</button>
-      <p style="margin-top:14px; font-size:0.82rem; color:#888;">إذا نسيت كلمة المرور، تواصل مع الأستاذ أو المدير.</p>
+      <p style="margin-top:14px; font-size:0.82rem; color:#0d47a1; cursor:pointer; text-decoration:underline;" onclick="app.showForgotUserPassword()">🔐 نسيت كلمة المرور؟</p>
     </div>
     <div id="adminLoginForm" class="hidden">
       <h1>🕌 معهد الإمام سحنون</h1>
@@ -413,7 +413,7 @@ tr:active { background:#f0f8f2; }
       <input type="email" id="adminEmail" placeholder="البريد الإلكتروني" autocomplete="email" dir="ltr">
       <input type="password" id="adminPassword" placeholder="كلمة المرور" autocomplete="current-password">
       <button onclick="app.adminLogin()">دخول المدير</button>
-      <p style="margin-top:14px; font-size:0.82rem; color:#888;">نسيت كلمة المرور؟ استخدم "استعادة كلمة المرور" في Firebase.</p>
+      <p style="margin-top:14px; font-size:0.82rem; color:#0d47a1; cursor:pointer; text-decoration:underline;" onclick="app.showForgotAdminPassword()">🔐 نسيت كلمة المرور؟</p>
     </div>
   </div>
 </div>
@@ -554,6 +554,88 @@ const app = {
     } catch(e) {
       console.error(e);
       this.showToast('خطأ في البريد الإلكتروني أو كلمة المرور', 'error');
+    }
+  },
+  /* ---------- Password Reset ---------- */
+  showForgotAdminPassword() {
+    this.openModal(`<div class="modal"><h3>🔐 استعادة كلمة مرور المدير</h3>
+      <p style="color:#666; margin-bottom:12px; font-size:0.9rem;">أدخل بريدك المسجل في Firebase وسيُرسل إليك رابط إعادة التعيين.</p>
+      <div class="form-group"><label>البريد الإلكتروني</label><input type="email" id="forgotAdminEmail" placeholder="admin@example.com" dir="ltr"></div>
+      <button class="btn btn-primary btn-block" onclick="app.sendAdminPasswordReset()">📧 إرسال رابط الاستعادة</button>
+      <button class="btn btn-secondary btn-block" onclick="app.closeModal()">إلغاء</button>
+    </div>`);
+  },
+  async sendAdminPasswordReset() {
+    const email = document.getElementById('forgotAdminEmail').value.trim();
+    if (!email) return this.showToast('يرجى إدخال البريد الإلكتروني', 'error');
+    try {
+      await firebase.auth().sendPasswordResetEmail(email);
+      this.showToast('✅ تم إرسال رابط الاستعادة إلى بريدك الإلكتروني');
+      this.closeModal();
+    } catch(e) {
+      console.error(e);
+      this.showToast('⚠️ لم يتم العثور على هذا البريد أو هناك خطأ في الإرسال', 'error');
+    }
+  },
+  showForgotUserPassword() {
+    this.openModal(`<div class="modal"><h3>🔐 استعادة كلمة المرور</h3>
+      <p style="color:#666; margin-bottom:12px; font-size:0.9rem;">أدخل اسم المستخدم والبريد المسجل لإنشاء رمز استعادة.</p>
+      <div class="form-group"><label>اسم المستخدم</label><input type="text" id="forgotUsername" placeholder="اسم المستخدم" dir="ltr"></div>
+      <div class="form-group"><label>البريد الإلكتروني المسجل</label><input type="email" id="forgotUserEmail" placeholder="بريدك@example.com" dir="ltr"></div>
+      <button class="btn btn-primary btn-block" onclick="app.sendUserPasswordReset()">🔑 إنشاء رمز الاستعادة</button>
+      <button class="btn btn-secondary btn-block" onclick="app.closeModal()">إلغاء</button>
+    </div>`);
+  },
+  async sendUserPasswordReset() {
+    const username = document.getElementById('forgotUsername').value.trim().replace(/\s/g, '');
+    const email = document.getElementById('forgotUserEmail').value.trim().toLowerCase();
+    if (!username || !email) return this.showToast('يرجى ملء جميع الحقول', 'error');
+    try {
+      const snap = await db.collection('users').where('username', '==', username).limit(1).get();
+      if (snap.empty) return this.showToast('اسم المستخدم غير موجود', 'error');
+      const userDoc = snap.docs[0];
+      const userData = userDoc.data();
+      if ((userData.email || '').toLowerCase() !== email) {
+        return this.showToast('البريد الإلكتروني لا يتطابق مع السجل', 'error');
+      }
+      const token = Math.floor(100000 + Math.random() * 900000).toString();
+      const expires = new Date(Date.now() + 15 * 60 * 1000);
+      await db.collection('users').doc(userDoc.id).update({ resetToken: token, resetExpires: expires });
+      this.closeModal();
+      this.openModal(`<div class="modal"><h3>✅ تم إنشاء رمز الاستعادة</h3>
+        <p style="color:#666; margin-bottom:12px; font-size:0.9rem;">تم إنشاء رمز مؤقت صالح لـ 15 دقيقة. اكتبه وأدخله مع كلمة المرور الجديدة.</p>
+        <div style="background:#e8f5e9; border:2px dashed #1a5f2a; border-radius:12px; padding:16px; text-align:center; margin-bottom:16px;">
+          <div style="font-size:2rem; font-weight:bold; color:#1a5f2a; letter-spacing:8px;">${token}</div>
+          <div style="font-size:0.8rem; color:#666; margin-top:6px;">صالح حتى ${expires.toLocaleTimeString('ar-DZ')}</div>
+        </div>
+        <div class="form-group"><label>أدخل الرمز هنا للتأكيد</label><input type="text" id="verifyTokenInput" placeholder="123456" maxlength="6" dir="ltr"></div>
+        <div class="form-group"><label>كلمة المرور الجديدة (4 أرقام على الأقل)</label><input type="password" id="verifyNewPassword" placeholder="••••" autocomplete="new-password"></div>
+        <button class="btn btn-primary btn-block" onclick="app.verifyUserPasswordReset('${userDoc.id}')">🔑 تأكيد وتغيير كلمة المرور</button>
+      </div>`);
+    } catch(e) {
+      console.error(e);
+      this.showToast('خطأ في الاتصال أو البيانات', 'error');
+    }
+  },
+  async verifyUserPasswordReset(userId) {
+    const token = document.getElementById('verifyTokenInput').value.trim();
+    const newPassword = document.getElementById('verifyNewPassword').value;
+    if (!token || !newPassword) return this.showToast('يرجى ملء جميع الحقول', 'error');
+    if (newPassword.length < 4) return this.showToast('كلمة المرور يجب أن تكون 4 أرقام على الأقل', 'error');
+    try {
+      const doc = await db.collection('users').doc(userId).get();
+      if (!doc.exists) return this.showToast('المستخدم غير موجود', 'error');
+      const data = doc.data();
+      if (data.resetToken !== token) return this.showToast('الرمز غير صحيح', 'error');
+      if (data.resetExpires && data.resetExpires.toDate() < new Date()) {
+        return this.showToast('انتهت صلاحية الرمز، ابدأ من جديد', 'error');
+      }
+      await db.collection('users').doc(userId).update({ password: newPassword, resetToken: firebase.firestore.FieldValue.delete(), resetExpires: firebase.firestore.FieldValue.delete() });
+      this.showToast('✅ تم تغيير كلمة المرور بنجاح! يمكنك الآن تسجيل الدخول');
+      this.closeModal();
+    } catch(e) {
+      console.error(e);
+      this.showToast('خطأ في التحديث', 'error');
     }
   },
   enterApp() {
@@ -864,11 +946,12 @@ const app = {
     const wrap = document.getElementById('usersTableWrap');
     if (!wrap) return;
     if (!this.data.users.length) { wrap.innerHTML = '<div class="empty-state">لا يوجد مستخدمون مسجلون.</div>'; return; }
-    let html = `<table><tr><th>الاسم</th><th>اسم المستخدم</th><th>الدور</th><th>القسم</th><th>إجراءات</th></tr>`;
+    let html = `<table><tr><th>الاسم</th><th>اسم المستخدم</th><th>البريد</th><th>الدور</th><th>القسم</th><th>إجراءات</th></tr>`;
     this.data.users.forEach(u => {
       const roleLabel = u.role === 'student' ? '🎓 طالب' : u.role === 'teacher' ? '👨‍🏫 أستاذ' : '👤 غير معروف';
       html += `<tr><td><strong>${this.escapeHtml(u.name)}</strong></td>
         <td dir="ltr">${this.escapeHtml(u.username)}</td>
+        <td dir="ltr">${this.escapeHtml(u.email || '—')}</td>
         <td><span class="badge badge-info">${roleLabel}</span></td>
         <td><span class="badge badge-primary">${this.escapeHtml(u.section || '—')}</span></td>
         <td>
@@ -891,6 +974,7 @@ const app = {
     this.openModal(`<div class="modal"><h3>إضافة مستخدم جديد</h3>
       <div class="form-group"><label>الاسم الكامل</label><input id="uName" placeholder="مثال: أحمد بن محمد"></div>
       <div class="form-group"><label>اسم المستخدم (فريد، بدون مسافات)</label><input id="uUsername" placeholder="ahmed_ben_mohamed" dir="ltr"></div>
+      <div class="form-group"><label>البريد الإلكتروني (اختياري — لاستعادة كلمة المرور)</label><input type="email" id="uEmail" placeholder="example@email.com" dir="ltr"></div>
       <div class="form-group"><label>كلمة المرور (4 أرقام أو أكثر)</label><input type="password" id="uPassword" placeholder="1234"></div>
       <div class="form-group"><label>الدور</label>
         <select id="uRole" onchange="app.toggleUserSection()">
@@ -927,6 +1011,7 @@ const app = {
   async saveUser() {
     const name = document.getElementById('uName').value.trim();
     const username = document.getElementById('uUsername').value.trim().replace(/\s/g, '');
+    const email = document.getElementById('uEmail').value.trim().toLowerCase();
     const password = document.getElementById('uPassword').value;
     const role = document.getElementById('uRole').value;
     const section = role === 'student' ? document.getElementById('uSection').value : '';
@@ -936,7 +1021,9 @@ const app = {
     try {
       const existing = await db.collection('users').where('username','==',username).limit(1).get();
       if (!existing.empty) return this.showToast('اسم المستخدم مستخدم بالفعل، اختر اسماً آخر', 'error');
-      await db.collection('users').add({ name, username, password, role, section: section || '', createdAt: new Date() });
+      const data = { name, username, password, role, section: section || '', createdAt: new Date() };
+      if (email) data.email = email;
+      await db.collection('users').add(data);
       this.showToast('تم إنشاء المستخدم بنجاح');
       this.closeModal();
     } catch(e) { console.error(e); this.showToast('خطأ في الحفظ', 'error'); }
