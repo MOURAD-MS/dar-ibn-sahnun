@@ -150,6 +150,8 @@ tr:active { background:#f0f8f2; }
 .btn-block { width:100%; justify-content:center; padding:14px; font-size:1rem; }
 
 /* ========== FORMS ========== */
+select optgroup { font-weight:700; color:#1a5f2a; background:#f0f8f2; padding:4px 0; }
+select option { padding:6px 8px; }
 .form-group { display:flex; flex-direction:column; margin-bottom:14px; text-align:right; }
 .form-group label { margin-bottom:5px; color:#555; font-size:0.9rem; font-weight:600; }
 .form-group input,.form-group select,.form-group textarea {
