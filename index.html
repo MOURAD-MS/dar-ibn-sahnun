@@ -43,6 +43,7 @@
           <input type="password" id="loginPassword" placeholder="أدخل كلمة المرور" autocomplete="current-password">
         </div>
         <button class="btn btn-primary btn-block" onclick="app.login()">🔐 تسجيل الدخول</button>
+        <p style="text-align:center; margin-top:10px; font-size:0.85rem;"><a href="#" onclick="app.forgotPassword()" style="color:#1a5f2a;">🔑 نسيت كلمة المرور؟</a></p>
       </div>
 
       <div id="adminLoginForm" class="login-form hidden">
@@ -55,6 +56,7 @@
           <input type="password" id="adminPassword" placeholder="أدخل كلمة المرور" autocomplete="current-password">
         </div>
         <button class="btn btn-primary btn-block" onclick="app.adminLogin()">🔐 دخول المدير</button>
+        <p style="text-align:center; margin-top:10px; font-size:0.85rem;"><a href="#" onclick="app.forgotPassword(true)" style="color:#1a5f2a;">🔑 نسيت كلمة المرور؟</a></p>
       </div>
 
       <p class="login-footer">نظام معهد الإمام سحنون السحابي — جميع البيانات تُحفظ بأمان في Firebase</p>
