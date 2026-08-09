@@ -1,70 +1,61 @@
-const CACHE_NAME = 'sahnoun-institute-v2';
-const STATIC_ASSETS = [
-  './',
-  './index.html',
-  './style.css',
-  './app.js',
-  './manifest.json'
-];
+const CACHE_NAME = 'sahnoun-institute-v5';
 
-// Install: cache the app shell
+// Install: clear ALL old caches immediately
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(STATIC_ASSETS))
-      .then(() => self.skipWaiting())
+    caches.keys().then((names) =>
+      Promise.all(names.map((name) => {
+        if (name !== CACHE_NAME) {
+          console.log('SW deleting old cache:', name);
+          return caches.delete(name);
+        }
+      }))
+    ).then(() => self.skipWaiting())
   );
 });
 
-// Activate: clean up old caches
+// Activate: claim clients immediately
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) =>
-      Promise.all(
-        cacheNames
-          .filter((name) => name !== CACHE_NAME)
-          .map((name) => caches.delete(name))
-      )
+    caches.keys().then((names) =>
+      Promise.all(names.map((name) => {
+        if (name !== CACHE_NAME) {
+          return caches.delete(name);
+        }
+      }))
     ).then(() => self.clients.claim())
   );
 });
 
-// Fetch: cache-first for static assets, network-first for Firestore/Auth
+// Fetch: always network-first, cache only as fallback for offline
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Skip non-GET requests and Firebase/Google APIs
+  // Skip non-GET and Firebase/Google APIs
   if (request.method !== 'GET') return;
   if (url.origin.includes('googleapis.com') ||
       url.origin.includes('gstatic.com') ||
       url.origin.includes('firebase')) {
-    return; // Let browser handle Firebase requests normally
+    return;
   }
 
   event.respondWith(
-    caches.match(request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      return fetch(request)
-        .then((networkResponse) => {
-          // Cache new static assets
-          if (networkResponse && networkResponse.status === 200 &&
-              (request.destination === 'style' ||
-               request.destination === 'script' ||
-               request.destination === 'document')) {
-            const clone = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          }
-          return networkResponse;
-        })
-        .catch(() => {
-          // Fallback for HTML navigation
+    fetch(request, { cache: 'no-store' })
+      .then((response) => {
+        if (response && response.status === 200) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+        }
+        return response;
+      })
+      .catch(() => {
+        return caches.match(request).then((cached) => {
+          if (cached) return cached;
           if (request.mode === 'navigate') {
             return caches.match('./index.html');
           }
         });
-    })
+      })
   );
 });
