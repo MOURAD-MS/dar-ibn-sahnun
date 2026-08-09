@@ -31,6 +31,15 @@ const app = {
     t.textContent = msg; t.className = 'toast show ' + type;
     setTimeout(() => t.className = 'toast', 3500);
   },
+  handleError(e, customMsg='خطأ') {
+    const msg = e && e.message ? e.message : String(e);
+    if (msg.includes('permission') || msg.includes('Permission') || (e && e.code && e.code.includes('permission'))) {
+      this.showToast('⚠️ صلاحية مرفوضة: تواصل مع مسؤول Firebase لتحديث قواعد الأمان (Firestore rules)','error');
+      console.error('PERMISSION DENIED:', e);
+    } else {
+      this.showToast(customMsg + (msg ? ': '+msg : ''), 'error');
+    }
+  },
   generateId() { return Date.now().toString(36) + Math.random().toString(36).substr(2,6); },
   formatDate(d) {
     if (!d) return 'غير محدد';
@@ -90,14 +99,16 @@ const app = {
       }
       const doc = snap.docs[0]; const u = {id: doc.id, ...doc.data()};
       this.data.currentUser = u; this.showApp(); this.showToast('تم تسجيل الدخول');
-      await db.collection('loginLogs').add({userId: u.id, email, role: u.role, time: new Date()});
+      try {
+        await db.collection('loginLogs').add({userId: u.id, email, role: u.role, time: new Date()});
+      } catch(logErr) { console.warn('Login log failed:', logErr); }
     } catch(e) {
       if (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential' || e.code === 'auth/invalid-login-credentials') {
         this.showToast('كلمة المرور غير صحيحة','error');
       } else if (e.code === 'auth/user-not-found') {
-        this.showToast('البريد غير مسجل — انقر \"نسيت كلمة المرور\" أو تواصل مع المسؤول','error');
+        this.showToast('البريد غير مسجل — انقر "نسيت كلمة المرور" أو تواصل مع المسؤول','error');
       } else {
-        this.showToast('خطأ: '+e.message,'error');
+        this.handleError(e, 'خطأ في تسجيل الدخول');
       }
     }
   },
@@ -116,13 +127,16 @@ const app = {
       }
       const doc = snap.docs[0]; const u = {id: doc.id, ...doc.data()};
       this.data.currentUser = u; this.showApp(); this.showToast('مرحباً مدير المعهد');
+      try {
+        await db.collection('loginLogs').add({userId: u.id, email, role: u.role, time: new Date()});
+      } catch(logErr) { console.warn('Admin login log failed:', logErr); }
     } catch(e) {
       if (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential' || e.code === 'auth/invalid-login-credentials') {
         this.showToast('كلمة المرور غير صحيحة','error');
       } else if (e.code === 'auth/user-not-found') {
         this.showToast('البريد غير مسجل — انقر نسيت كلمة المرور أو تواصل مع المسؤول','error');
       } else {
-        this.showToast('خطأ: '+e.message,'error');
+        this.handleError(e, 'خطأ في تسجيل الدخول');
       }
     }
   },
@@ -134,7 +148,7 @@ const app = {
     try {
       await firebase.auth().sendPasswordResetEmail(email);
       this.showToast('تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك');
-    } catch(e) { this.showToast('خطأ: '+e.message,'error'); }
+    } catch(e) { this.handleError(e, 'خطأ في إرسال رابط إعادة التعيين'); }
   },
   checkAuth() {
     firebase.auth().onAuthStateChanged(async user => {
@@ -338,7 +352,7 @@ const app = {
   async saveStage() {
     const name = document.getElementById('stName').value.trim();
     if (!name) return this.showToast('أدخل الاسم','error');
-    try { await db.collection('stages').add({name, createdAt: new Date()}); this.showToast('تم الحفظ'); this.closeModal(); } catch(e) { this.showToast('خطأ','error'); }
+    try { await db.collection('stages').add({name, createdAt: new Date()}); this.showToast('تم الحفظ'); this.closeModal(); } catch(e) { this.handleError(e, 'خطأ في الحفظ'); }
   },
   renderLevels() {
     let html = `<div class="header-bar"><h2>📚 المستويات</h2><button class="btn btn-primary" onclick="app.showLevelModal()">+ مستوى</button></div>`;
@@ -371,7 +385,7 @@ const app = {
     const name = document.getElementById('lvName').value.trim();
     const stageId = document.getElementById('lvStage').value;
     if (!name || !stageId) return this.showToast('أدخل جميع البيانات','error');
-    try { await db.collection('levels').add({name, stageId, createdAt: new Date()}); this.showToast('تم الحفظ'); this.closeModal(); } catch(e) { this.showToast('خطأ','error'); }
+    try { await db.collection('levels').add({name, stageId, createdAt: new Date()}); this.showToast('تم الحفظ'); this.closeModal(); } catch(e) { this.handleError(e, 'خطأ في الحفظ'); }
   },
   renderSections() {
     let html = `<div class="header-bar"><h2>🗂️ الأقسام</h2><button class="btn btn-primary" onclick="app.showSectionModal()">+ قسم</button></div>`;
@@ -404,7 +418,7 @@ const app = {
     const name = document.getElementById('scName').value.trim();
     const levelId = document.getElementById('scLevel').value;
     if (!name || !levelId) return this.showToast('أدخل جميع البيانات','error');
-    try { await db.collection('sections').add({name, levelId, createdAt: new Date()}); this.showToast('تم الحفظ'); this.closeModal(); } catch(e) { this.showToast('خطأ','error'); }
+    try { await db.collection('sections').add({name, levelId, createdAt: new Date()}); this.showToast('تم الحفظ'); this.closeModal(); } catch(e) { this.handleError(e, 'خطأ في الحفظ'); }
   },
   renderSubjects() {
     let html = `<div class="header-bar"><h2>📖 المقررات</h2><button class="btn btn-primary" onclick="app.showSubjectModal()">+ مقرر</button></div>`;
@@ -432,7 +446,7 @@ const app = {
   async saveSubject() {
     const name = document.getElementById('sjName').value.trim();
     if (!name) return this.showToast('أدخل الاسم','error');
-    try { await db.collection('subjects').add({name, createdAt: new Date()}); this.showToast('تم الحفظ'); this.closeModal(); } catch(e) { this.showToast('خطأ','error'); }
+    try { await db.collection('subjects').add({name, createdAt: new Date()}); this.showToast('تم الحفظ'); this.closeModal(); } catch(e) { this.handleError(e, 'خطأ في الحفظ'); }
   },
   renderCourses() {
     let html = `<div class="header-bar"><h2>🎓 الدورات</h2><button class="btn btn-primary" onclick="app.showCourseModal()">+ دورة</button></div>`;
@@ -463,7 +477,7 @@ const app = {
     const name = document.getElementById('coName').value.trim();
     const subjectId = document.getElementById('coSubject').value;
     if (!name || !subjectId) return this.showToast('أدخل جميع البيانات','error');
-    try { await db.collection('courses').add({name, subjectId, createdAt: new Date()}); this.showToast('تم الحفظ'); this.closeModal(); } catch(e) { this.showToast('خطأ','error'); }
+    try { await db.collection('courses').add({name, subjectId, createdAt: new Date()}); this.showToast('تم الحفظ'); this.closeModal(); } catch(e) { this.handleError(e, 'خطأ في الحفظ'); }
   },
   /* =========================================================
      5. STUDENTS
@@ -526,7 +540,7 @@ const app = {
     try {
       await db.collection('students').add({ fullName, sectionId, phone, entryDate, age, country, city, academicLevel, job, active: true, createdAt: new Date() });
       this.showToast('تم إضافة الطالب'); this.closeModal();
-    } catch(e) { this.showToast('خطأ في الحفظ','error'); }
+    } catch(e) { this.handleError(e, 'خطأ في الحفظ'); }
   },
   /* =========================================================
      6. TEACHERS
@@ -583,7 +597,7 @@ const app = {
     try {
       await db.collection('teachers').add({ fullName, specialty, phone, entryDate, age, country, city, academicLevel, job, createdAt: new Date() });
       this.showToast('تم إضافة الأستاذ'); this.closeModal();
-    } catch(e) { this.showToast('خطأ في الحفظ','error'); }
+    } catch(e) { this.handleError(e, 'خطأ في الحفظ'); }
   },
   /* =========================================================
      7. USERS
@@ -636,13 +650,18 @@ const app = {
       const cred = await firebase.auth().createUserWithEmailAndPassword(email, password);
       const uid = cred.user.uid;
       await db.collection('users').add({ fullName, email, uid, role, sectionId: sectionId || '', createdAt: new Date() });
-      if (currentUser) {
-        await firebase.auth().updateCurrentUser(currentUser);
-      } else {
-        await firebase.auth().signOut();
+      try {
+        if (currentUser) {
+          await firebase.auth().updateCurrentUser(currentUser);
+        } else {
+          await firebase.auth().signOut();
+        }
+      } catch(sessionErr) {
+        console.warn('Session restore failed:', sessionErr);
+        this.showToast('تم إضافة المستخدم. يرجى إعادة تسجيل الدخول إذا انقطعت الجلسة.','warning');
       }
       this.showToast('تم إضافة المستخدم'); this.closeModal();
-    } catch(e) { this.showToast('خطأ: '+e.message,'error'); }
+    } catch(e) { this.handleError(e, 'خطأ في إضافة المستخدم'); }
   },
   /* =========================================================
      8. TIMETABLE
@@ -717,7 +736,7 @@ const app = {
     const teacherId = document.getElementById('ttTeacher').value;
     const title = document.getElementById('ttTitle').value.trim();
     if (!day || !time || !sectionId) return this.showToast('أدخل اليوم والوقت والقسم','error');
-    try { await db.collection('timetable').add({day, time, sectionId, teacherId: teacherId || '', title: title || 'حصة', createdAt: new Date()}); this.showToast('تم الحفظ'); this.closeModal(); } catch(e) { this.showToast('خطأ','error'); }
+    try { await db.collection('timetable').add({day, time, sectionId, teacherId: teacherId || '', title: title || 'حصة', createdAt: new Date()}); this.showToast('تم الحفظ'); this.closeModal(); } catch(e) { this.handleError(e, 'خطأ في الحفظ'); }
   },
   showTimetableEdit(id) {
     const entry = this.data.timetable.find(t => t.id === id); if (!entry) return;
@@ -732,7 +751,7 @@ const app = {
   },
   async updateTimetable(id) {
     const title = document.getElementById('ttEditTitle').value.trim();
-    try { await db.collection('timetable').doc(id).update({title}); this.showToast('تم التحديث'); this.closeModal(); } catch(e) { this.showToast('خطأ','error'); }
+    try { await db.collection('timetable').doc(id).update({title}); this.showToast('تم التحديث'); this.closeModal(); } catch(e) { this.handleError(e, 'خطأ في التحديث'); }
   },
   /* =========================================================
      9. LESSONS
@@ -781,7 +800,7 @@ const app = {
     const teacherId = document.getElementById('lsTeacher').value;
     const dateVal = document.getElementById('lsDate').value;
     if (!title || !sectionId) return this.showToast('أدخل العنوان والقسم','error');
-    try { await db.collection('lessons').add({title, sectionId, teacherId: teacherId || '', date: dateVal ? new Date(dateVal) : new Date(), createdAt: new Date()}); this.showToast('تم الحفظ'); this.closeModal(); } catch(e) { this.showToast('خطأ','error'); }
+    try { await db.collection('lessons').add({title, sectionId, teacherId: teacherId || '', date: dateVal ? new Date(dateVal) : new Date(), createdAt: new Date()}); this.showToast('تم الحفظ'); this.closeModal(); } catch(e) { this.handleError(e, 'خطأ في الحفظ'); }
   },
   shareLessonLink(lessonId) {
     const url = `${location.origin}${location.pathname}?attendanceLesson=${lessonId}`;
@@ -837,7 +856,7 @@ const app = {
     try {
       await db.collection('attendance').add({ lessonId, studentId, studentName: student ? student.fullName : '', studentSectionId: student ? student.sectionId : '', timestamp: new Date() });
       this.showToast('تم تسجيل الحضور'); this.closeModal();
-    } catch(e) { this.showToast('خطأ','error'); }
+    } catch(e) { this.handleError(e, 'خطأ في تسجيل الحضور'); }
   },
   exportAttendanceToWord() {
     const filter = document.getElementById('attLessonFilter')?.value || 'all';
@@ -888,7 +907,7 @@ const app = {
     const name = document.getElementById('pubName').value.trim();
     const sectionId = document.getElementById('pubSection').value;
     if (!name || !sectionId) return this.showToast('أدخل الاسم والقسم','error');
-    try { await db.collection('attendance').add({ lessonId, studentName: name, studentSectionId: sectionId, timestamp: new Date() }); this.showToast('تم تسجيل حضورك'); document.getElementById('pubBtn').disabled = true; document.getElementById('pubBtn').textContent = '✅ تم التسجيل'; } catch(e) { this.showToast('خطأ','error'); }
+    try { await db.collection('attendance').add({ lessonId, studentName: name, studentSectionId: sectionId, timestamp: new Date() }); this.showToast('تم تسجيل حضورك'); document.getElementById('pubBtn').disabled = true; document.getElementById('pubBtn').textContent = '✅ تم التسجيل'; } catch(e) { this.handleError(e, 'خطأ في تسجيل الحضور'); }
   },
   /* =========================================================
      11. MATERIALS
@@ -939,7 +958,7 @@ const app = {
     const courseId = document.getElementById('mtCourse').value;
     const url = document.getElementById('mtUrl').value.trim();
     if (!title || !url) return this.showToast('أدخل العنوان والرابط','error');
-    try { await db.collection('materials').add({title, courseId: courseId || '', url, createdAt: new Date()}); this.showToast('تم الحفظ'); this.closeModal(); } catch(e) { this.showToast('خطأ','error'); }
+    try { await db.collection('materials').add({title, courseId: courseId || '', url, createdAt: new Date()}); this.showToast('تم الحفظ'); this.closeModal(); } catch(e) { this.handleError(e, 'خطأ في الحفظ'); }
   },
   /* =========================================================
      12. EXAMS
@@ -982,7 +1001,7 @@ const app = {
     const duration = parseInt(document.getElementById('exDuration').value) || 20;
     const sectionId = document.getElementById('exSection').value;
     if (!title) return this.showToast('أدخل عنوان الاختبار','error');
-    try { await db.collection('exams').add({title, duration, sectionId: sectionId || '', questions:[], status:'منشور', createdAt: new Date()}); this.showToast('تم إنشاء الاختبار'); this.closeModal(); } catch(e) { this.showToast('خطأ','error'); }
+    try { await db.collection('exams').add({title, duration, sectionId: sectionId || '', questions:[], status:'منشور', createdAt: new Date()}); this.showToast('تم إنشاء الاختبار'); this.closeModal(); } catch(e) { this.handleError(e, 'خطأ في إنشاء الاختبار'); }
   },
   renderExamQuestions() {
     const exam = this.data.exams.find(e => e.id === this.data.activeExamId);
@@ -1026,7 +1045,7 @@ const app = {
       questions.push({text, options, correct});
       await db.collection('exams').doc(this.data.activeExamId).update({questions});
       this.showToast('تم إضافة السؤال'); this.closeModal();
-    } catch(e) { this.showToast('خطأ','error'); }
+    } catch(e) { this.handleError(e, 'خطأ في حفظ السؤال'); }
   },
   setupExamTimer() {
     const exam = this.data.exams.find(e => e.id === this.data.activeExamId);
@@ -1128,7 +1147,7 @@ const app = {
     try {
       await db.collection('notifications').add({ title, body, type, targetId, read: false, timestamp: new Date() });
       this.showToast('تم إرسال الإشعار'); this.closeModal();
-    } catch(e) { this.showToast('خطأ في الإرسال','error'); }
+    } catch(e) { this.handleError(e, 'خطأ في إرسال الإشعار'); }
   },
   renderMyNotifications() {
     const u = this.data.currentUser; if (!u) return this.renderForbidden();
@@ -1153,7 +1172,7 @@ const app = {
     const u = this.data.currentUser; if (!u) return;
     const unread = this.data.myNotifications.filter(n => !n.read);
     for (const n of unread) {
-      try { await db.collection('notifications').doc(n.id).update({read: true}); } catch(e) {}
+      try { await db.collection('notifications').doc(n.id).update({read: true}); } catch(e) { this.handleError(e, 'خطأ في تحديث الإشعارات'); }
     }
     this.data.myUnreadCount = 0; this.renderBadge();
   },
@@ -1208,7 +1227,7 @@ const app = {
      ========================================================= */
   async deleteDoc(colName, docId) {
     if (!confirm('هل أنت متأكد من الحذف من السحابة؟')) return;
-    try { await db.collection(colName).doc(docId).delete(); this.showToast('تم الحذف'); } catch(e) { this.showToast('خطأ في الحذف','error'); }
+    try { await db.collection(colName).doc(docId).delete(); this.showToast('تم الحذف'); } catch(e) { this.handleError(e, 'خطأ في الحذف'); }
   },
   /* =========================================================
      18. INIT
