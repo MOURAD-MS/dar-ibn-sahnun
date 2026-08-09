@@ -1,3 +1,5 @@
+/* App Version: v5 - Cache-busting update */
+/* App Version: v5 - Cache-busting update */
 /* =========================================================
    1. FIREBASE INITIALIZATION
    ========================================================= */
@@ -104,7 +106,7 @@ const app = {
       } catch(logErr) { console.warn('Login log failed:', logErr); }
     } catch(e) {
       if (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential' || e.code === 'auth/invalid-login-credentials') {
-        this.showToast('كلمة المرور غير صحيحة','error');
+        this.showToast('❌ البريد أو كلمة المرور غير صحيحة. إذا نسيتها، اضغط "نسيت كلمة المرور".','error');
       } else if (e.code === 'auth/user-not-found') {
         this.showToast('البريد غير مسجل — انقر "نسيت كلمة المرور" أو تواصل مع المسؤول','error');
       } else {
@@ -137,7 +139,7 @@ const app = {
       } catch(logErr) { console.warn('Admin login log failed:', logErr); }
     } catch(e) {
       if (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential' || e.code === 'auth/invalid-login-credentials') {
-        this.showToast('كلمة المرور غير صحيحة','error');
+        this.showToast('❌ البريد أو كلمة المرور غير صحيحة. إذا نسيتها، اضغط "نسيت كلمة المرور".','error');
       } else if (e.code === 'auth/user-not-found') {
         this.showToast('البريد غير مسجل — انقر نسيت كلمة المرور أو تواصل مع المسؤول','error');
       } else {
