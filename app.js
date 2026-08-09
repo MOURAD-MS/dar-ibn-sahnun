@@ -81,7 +81,17 @@ const app = {
     if (!email || !pass) return this.showToast('أدخل البريد وكلمة المرور','error');
     try {
       await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-      const cred = await firebase.auth().signInWithEmailAndPassword(email, pass);
+      let cred;
+      try {
+        cred = await firebase.auth().signInWithEmailAndPassword(email, pass);
+      } catch (err) {
+        if (err.code === 'auth/invalid-credential' || err.code === 'auth/invalid-login-credentials' || err.code === 'auth/user-not-found') {
+          cred = await firebase.auth().createUserWithEmailAndPassword(email, pass);
+          const uid = cred.user.uid;
+          await db.collection('users').add({ fullName: email.split('@')[0], email, uid, role: 'student', sectionId: '', createdAt: new Date() });
+          this.showToast('تم إنشاء الحساب وتسجيل الدخول');
+        } else { throw err; }
+      }
       const uid = cred.user.uid;
       const snap = await db.collection('users').where('uid','==',uid).get();
       if (snap.empty) return this.showToast('المستخدم غير مسجل في النظام','error');
