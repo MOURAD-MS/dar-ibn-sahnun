@@ -438,11 +438,28 @@ tr:hover { background: #fafafa; }
 }
 
 @media print {
-  body * { visibility: hidden; }
-  .modal-overlay, .modal-overlay * { visibility: visible; }
-  .modal { box-shadow: none; border: none; max-width: 100%; padding: 0; }
-  .modal .btn { display: none !important; }
-  .student-card { border: 2px solid #1a5f2a; box-shadow: none; }
+  @page { margin: 12mm; size: auto; }
+  body { background: #fff; }
+  body > * { visibility: hidden; display: none; }
+  .modal-overlay,
+  .modal-overlay > .modal,
+  #mainContent .student-card,
+  #mainContent .student-card * { visibility: visible; display: revert; }
+  .modal-overlay { position: static; background: none; padding: 0; }
+  .modal-overlay > .modal { max-width: 100%; width: 100%; box-shadow: none; border: none; padding: 0; margin: 0; background: none; }
+  .modal .btn, .modal button, .student-card button { display: none !important; }
+  .student-card {
+    border: 2px solid #1a5f2a;
+    box-shadow: none;
+    max-width: 100%;
+    width: 100%;
+    margin: 0;
+    background: #fff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .student-card .card-header { border-bottom: 2px solid #1a5f2a; }
+  .student-card .card-footer { border-top: 1px solid #1a5f2a; }
 }
 
 /* =========================================================
