@@ -76,15 +76,18 @@ const app = {
     document.getElementById('adminLoginForm').classList.toggle('hidden', tab!=='admin');
   },
   async login() {
-    const user = document.getElementById('loginUsername').value.trim();
+    const email = document.getElementById('loginEmail').value.trim();
     const pass = document.getElementById('loginPassword').value.trim();
-    if (!user || !pass) return this.showToast('أدخل الاسم وكلمة المرور','error');
+    if (!email || !pass) return this.showToast('أدخل البريد وكلمة المرور','error');
     try {
-      const snap = await db.collection('users').where('username','==',user).where('password','==',pass).get();
-      if (snap.empty) return this.showToast('بيانات غير صحيحة','error');
+      await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+      const cred = await firebase.auth().signInWithEmailAndPassword(email, pass);
+      const uid = cred.user.uid;
+      const snap = await db.collection('users').where('uid','==',uid).get();
+      if (snap.empty) return this.showToast('المستخدم غير مسجل في النظام','error');
       const doc = snap.docs[0]; const u = {id: doc.id, ...doc.data()};
       this.data.currentUser = u; this.showApp(); this.showToast('تم تسجيل الدخول');
-      await db.collection('loginLogs').add({userId: u.id, username: u.username, role: u.role, time: new Date()});
+      await db.collection('loginLogs').add({userId: u.id, email, role: u.role, time: new Date()});
     } catch(e) { this.showToast('خطأ: '+e.message,'error'); }
   },
   async adminLogin() {
@@ -558,7 +561,7 @@ const app = {
   filterUsers() {
     const q = (document.getElementById('userSearch')?.value || '').toLowerCase();
     let list = this.data.users;
-    if (q) list = list.filter(u => (u.fullName||'').toLowerCase().includes(q) || (u.username||'').toLowerCase().includes(q));
+    if (q) list = list.filter(u => (u.fullName||'').toLowerCase().includes(q) || (u.email||'').toLowerCase().includes(q));
     this.renderUsersTable(list);
   },
   renderUsersTable(list) {
@@ -567,7 +570,7 @@ const app = {
     let html = '<table><thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>الدور</th><th>القسم</th><th>إجراءات</th></tr></thead><tbody>';
     list.forEach(u => {
       const roleLabel = u.role==='admin'?'مدير':u.role==='teacher'?'أستاذ':'طالب';
-      html += `<tr><td><strong>${this.escapeHtml(u.fullName)}</strong></td><td>${this.escapeHtml(u.username||'—')}</td>
+      html += `<tr><td><strong>${this.escapeHtml(u.fullName)}</strong></td><td>${this.escapeHtml(u.email||'—')}</td>
         <td><span class="badge badge-info">${roleLabel}</span></td>
         <td><span class="badge badge-primary">${this.getSectionName(u.sectionId)}</span></td>
         <td><button class="btn btn-danger" onclick="app.deleteDoc('users','${u.id}')">حذف</button></td></tr>`;
@@ -578,7 +581,7 @@ const app = {
     const roles = '<option value="student">طالب</option><option value="teacher">أستاذ</option><option value="admin">مدير</option>';
     this.openModal(`<div class="modal"><h3>إضافة مستخدم</h3>
       <div class="form-group"><label>الاسم الكامل</label><input id="uFullName"></div>
-      <div class="form-group"><label>اسم المستخدم</label><input id="uUsername" dir="ltr"></div>
+      <div class="form-group"><label>البريد الإلكتروني</label><input type="email" id="uEmail" dir="ltr"></div>
       <div class="form-group"><label>كلمة المرور</label><input type="password" id="uPassword"></div>
       <div class="form-group"><label>الدور</label><select id="uRole">${roles}</select></div>
       <div class="form-group"><label>القسم (اختياري)</label><select id="uSection"><option value="">—</option>${this.buildSectionsSelect('', '', false, '')}</select></div>
@@ -588,15 +591,23 @@ const app = {
   },
   async saveUser() {
     const fullName = document.getElementById('uFullName').value.trim();
-    const username = document.getElementById('uUsername').value.trim();
+    const email = document.getElementById('uEmail').value.trim();
     const password = document.getElementById('uPassword').value.trim();
     const role = document.getElementById('uRole').value;
     const sectionId = document.getElementById('uSection').value;
-    if (!fullName || !username || !password) return this.showToast('أدخل جميع البيانات','error');
+    if (!fullName || !email || !password) return this.showToast('أدخل جميع البيانات','error');
     try {
-      await db.collection('users').add({ fullName, username, password, role, sectionId: sectionId || '', createdAt: new Date() });
+      const currentUser = firebase.auth().currentUser;
+      const cred = await firebase.auth().createUserWithEmailAndPassword(email, password);
+      const uid = cred.user.uid;
+      await db.collection('users').add({ fullName, email, uid, role, sectionId: sectionId || '', createdAt: new Date() });
+      if (currentUser) {
+        await firebase.auth().updateCurrentUser(currentUser);
+      } else {
+        await firebase.auth().signOut();
+      }
       this.showToast('تم إضافة المستخدم'); this.closeModal();
-    } catch(e) { this.showToast('خطأ في الحفظ','error'); }
+    } catch(e) { this.showToast('خطأ: '+e.message,'error'); }
   },
   /* =========================================================
      8. TIMETABLE
