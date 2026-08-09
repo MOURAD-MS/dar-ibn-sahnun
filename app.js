@@ -126,6 +126,11 @@ const app = {
         snap = await db.collection('users').where('uid','==',uid).get();
       }
       const doc = snap.docs[0]; const u = {id: doc.id, ...doc.data()};
+      if (u.role !== 'admin') {
+        await firebase.auth().signOut();
+        this.showToast('⚠️ هذا الحساب غير مسجل كمدير. دورك الحالي: ' + (u.role || 'غير معروف') + '. يجب تحديثه في Firestore أو استخدام زر الطوارئ.','error');
+        return;
+      }
       this.data.currentUser = u; this.showApp(); this.showToast('مرحباً مدير المعهد');
       try {
         await db.collection('loginLogs').add({userId: u.id, email, role: u.role, time: new Date()});
@@ -158,9 +163,35 @@ const app = {
           await db.collection('users').add({ fullName: user.email.split('@')[0], email: user.email, uid: user.uid, role: 'student', sectionId: '', createdAt: new Date() });
           snap = await db.collection('users').where('uid','==',user.uid).get();
         }
-        if (!snap.empty) { const doc = snap.docs[0]; this.data.currentUser = {id: doc.id, ...doc.data()}; this.showApp(); }
+        if (!snap.empty) { const doc = snap.docs[0]; const u = {id: doc.id, ...doc.data()}; this.data.currentUser = u; this.showApp(); }
       } else { document.getElementById('loginScreen').classList.remove('hidden'); }
     });
+  },
+  async emergencyCreateAdmin() {
+    const email = document.getElementById('adminEmail').value.trim();
+    const pass = document.getElementById('adminPassword').value.trim();
+    if (!email || !pass) return this.showToast('أدخل البريد وكلمة المرور أولاً','error');
+    try {
+      await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+      let cred;
+      try {
+        cred = await firebase.auth().signInWithEmailAndPassword(email, pass);
+      } catch(signInErr) {
+        if (signInErr.code === 'auth/user-not-found') {
+          cred = await firebase.auth().createUserWithEmailAndPassword(email, pass);
+        } else { throw signInErr; }
+      }
+      const uid = cred.user.uid;
+      let snap = await db.collection('users').where('uid','==',uid).get();
+      if (snap.empty) {
+        await db.collection('users').add({ fullName: email.split('@')[0], email, uid, role: 'admin', sectionId: '', createdAt: new Date() });
+      } else {
+        const docRef = snap.docs[0].ref;
+        await docRef.update({ role: 'admin', updatedAt: new Date() });
+      }
+      this.showToast('✅ تم تجديد/إنشاء حساب المدير بنجاح. سجّل الدخول الآن.');
+      setTimeout(() => location.reload(), 2000);
+    } catch(e) { this.handleError(e, 'فشل تجديد حساب المدير'); }
   },
   /* ---------- UI ---------- */
   showApp() {
