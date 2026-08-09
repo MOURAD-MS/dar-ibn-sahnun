@@ -81,24 +81,25 @@ const app = {
     if (!email || !pass) return this.showToast('أدخل البريد وكلمة المرور','error');
     try {
       await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-      let cred;
-      try {
-        cred = await firebase.auth().signInWithEmailAndPassword(email, pass);
-      } catch (err) {
-        if (err.code === 'auth/invalid-credential' || err.code === 'auth/invalid-login-credentials' || err.code === 'auth/user-not-found') {
-          cred = await firebase.auth().createUserWithEmailAndPassword(email, pass);
-          const uid = cred.user.uid;
-          await db.collection('users').add({ fullName: email.split('@')[0], email, uid, role: 'student', sectionId: '', createdAt: new Date() });
-          this.showToast('تم إنشاء الحساب وتسجيل الدخول');
-        } else { throw err; }
-      }
+      let cred = await firebase.auth().signInWithEmailAndPassword(email, pass);
       const uid = cred.user.uid;
-      const snap = await db.collection('users').where('uid','==',uid).get();
-      if (snap.empty) return this.showToast('المستخدم غير مسجل في النظام','error');
+      let snap = await db.collection('users').where('uid','==',uid).get();
+      if (snap.empty) {
+        await db.collection('users').add({ fullName: email.split('@')[0], email, uid, role: 'student', sectionId: '', createdAt: new Date() });
+        snap = await db.collection('users').where('uid','==',uid).get();
+      }
       const doc = snap.docs[0]; const u = {id: doc.id, ...doc.data()};
       this.data.currentUser = u; this.showApp(); this.showToast('تم تسجيل الدخول');
       await db.collection('loginLogs').add({userId: u.id, email, role: u.role, time: new Date()});
-    } catch(e) { this.showToast('خطأ: '+e.message,'error'); }
+    } catch(e) {
+      if (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential' || e.code === 'auth/invalid-login-credentials') {
+        this.showToast('كلمة المرور غير صحيحة','error');
+      } else if (e.code === 'auth/user-not-found') {
+        this.showToast('البريد غير مسجل — انقر \"نسيت كلمة المرور\" أو تواصل مع المسؤول','error');
+      } else {
+        this.showToast('خطأ: '+e.message,'error');
+      }
+    }
   },
   async adminLogin() {
     const email = document.getElementById('adminEmail').value.trim();
@@ -108,17 +109,41 @@ const app = {
       await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
       const cred = await firebase.auth().signInWithEmailAndPassword(email, pass);
       const uid = cred.user.uid;
-      const snap = await db.collection('users').where('uid','==',uid).get();
-      if (snap.empty) return this.showToast('المستخدم غير مسجل في النظام','error');
+      let snap = await db.collection('users').where('uid','==',uid).get();
+      if (snap.empty) {
+        await db.collection('users').add({ fullName: email.split('@')[0], email, uid, role: 'admin', sectionId: '', createdAt: new Date() });
+        snap = await db.collection('users').where('uid','==',uid).get();
+      }
       const doc = snap.docs[0]; const u = {id: doc.id, ...doc.data()};
       this.data.currentUser = u; this.showApp(); this.showToast('مرحباً مدير المعهد');
-    } catch(e) { this.showToast('خطأ: '+e.message,'error'); }
+    } catch(e) {
+      if (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential' || e.code === 'auth/invalid-login-credentials') {
+        this.showToast('كلمة المرور غير صحيحة','error');
+      } else if (e.code === 'auth/user-not-found') {
+        this.showToast('البريد غير مسجل — انقر نسيت كلمة المرور أو تواصل مع المسؤول','error');
+      } else {
+        this.showToast('خطأ: '+e.message,'error');
+      }
+    }
   },
   logout() { firebase.auth().signOut(); this.data.currentUser = null; location.reload(); },
+  async forgotPassword(isAdmin) {
+    const inputId = isAdmin ? 'adminEmail' : 'loginEmail';
+    const email = document.getElementById(inputId).value.trim();
+    if (!email) return this.showToast('أدخل البريد الإلكتروني أولاً','error');
+    try {
+      await firebase.auth().sendPasswordResetEmail(email);
+      this.showToast('تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك');
+    } catch(e) { this.showToast('خطأ: '+e.message,'error'); }
+  },
   checkAuth() {
     firebase.auth().onAuthStateChanged(async user => {
       if (user) {
-        const snap = await db.collection('users').where('uid','==',user.uid).get();
+        let snap = await db.collection('users').where('uid','==',user.uid).get();
+        if (snap.empty) {
+          await db.collection('users').add({ fullName: user.email.split('@')[0], email: user.email, uid: user.uid, role: 'student', sectionId: '', createdAt: new Date() });
+          snap = await db.collection('users').where('uid','==',user.uid).get();
+        }
         if (!snap.empty) { const doc = snap.docs[0]; this.data.currentUser = {id: doc.id, ...doc.data()}; this.showApp(); }
       } else { document.getElementById('loginScreen').classList.remove('hidden'); }
     });
