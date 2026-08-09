@@ -69,6 +69,10 @@
         <span class="header-icon">🕌</span>
         <span>معهد الإمام سحنون</span>
       </div>
+      <div style="position:relative; display:inline-flex; align-items:center;">
+        <button class="logout-btn" onclick="app.navigate('myNotifications')" aria-label="الإشعارات" style="margin-left:8px;">🔔</button>
+        <span id="notificationBadge" class="notification-badge">0</span>
+      </div>
       <button class="logout-btn" onclick="app.logout()" aria-label="خروج">🚪</button>
     </header>
 
