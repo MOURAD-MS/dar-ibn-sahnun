@@ -8,7 +8,7 @@
   <meta http-equiv="Expires" content="0">
   <meta name="theme-color" content="#1a5f2a">
   <title>معهد الإمام سحنون للعلوم الشرعية</title>
-  <link rel="stylesheet" href="style.css?v=3">
+  <link rel="stylesheet" href="style.css?v=4">
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon-192.png">
   <!-- Firebase SDK (compat) -->
@@ -60,6 +60,10 @@
         </div>
         <button class="btn btn-primary btn-block" onclick="app.adminLogin()">🔐 دخول المدير</button>
         <p style="text-align:center; margin-top:10px; font-size:0.85rem;"><a href="#" onclick="app.forgotPassword(true)" style="color:#1a5f2a;">🔑 نسيت كلمة المرور؟</a></p>
+        <p style="text-align:center; margin-top:6px; font-size:0.78rem; color:#888; line-height:1.4;">
+          ⚠️ إذا كنت مسجلاً سابقاً كطالب/أستاذ، يجب تحديث دورك إلى "مدير" في قاعدة البيانات.<br>
+          <button class="btn btn-info btn-block" style="margin-top:8px; font-size:0.8rem; min-height:36px;" onclick="app.emergencyCreateAdmin()">🛠️ إنشاء/تجديد حساب مدير (طوارئ)</button>
+        </p>
       </div>
 
       <p class="login-footer">نظام معهد الإمام سحنون السحابي — جميع البيانات تُحفظ بأمان في Firebase</p>
@@ -93,7 +97,7 @@
   <div id="menuOverlay" class="menu-overlay" onclick="app.toggleMenu()"></div>
 
   <!-- App Logic -->
-  <script src="app.js?v=3"></script>
+  <script src="app.js?v=4"></script>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('service-worker.js?v=4')
