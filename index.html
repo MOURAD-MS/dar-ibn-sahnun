@@ -7,8 +7,11 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <meta name="theme-color" content="#1a5f2a">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate, max-age=0">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="-1">
   <title>معهد الإمام سحنون للعلوم الشرعية</title>
-  <link rel="stylesheet" href="style.css?v=4">
+  <link rel="stylesheet" href="style.css?v=5">
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon-192.png">
   <!-- Firebase SDK (compat) -->
@@ -97,10 +100,27 @@
   <div id="menuOverlay" class="menu-overlay" onclick="app.toggleMenu()"></div>
 
   <!-- App Logic -->
-  <script src="app.js?v=4"></script>
+  <script src="app.js?v=5"></script>
+  <script>
+    // Force clear cache on version mismatch
+    (function() {
+      const expectedVersion = 'v5';
+      const cachedVersion = localStorage.getItem('app-version');
+      if (cachedVersion !== expectedVersion) {
+        localStorage.setItem('app-version', expectedVersion);
+        if ('caches' in window) {
+          caches.keys().then(function(names) {
+            return Promise.all(names.map(function(name) { return caches.delete(name); }));
+          }).then(function() {
+            console.log('Old caches cleared for v5');
+          });
+        }
+      }
+    })();
+  </script>
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('service-worker.js?v=4')
+      navigator.serviceWorker.register('service-worker.js?v=5')
         .then(function(reg) { console.log('SW registered:', reg.scope); })
         .catch(function(err) { console.log('SW registration failed:', err); });
     }
