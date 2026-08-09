@@ -386,6 +386,66 @@ tr:hover { background: #fafafa; }
 .tt-time { font-size: 0.8rem; color: #888; font-weight: 500; }
 
 /* =========================================================
+   Notification Badge
+   ========================================================= */
+.notification-badge {
+  position: absolute; top: -4px; right: -4px;
+  background: #dc3545; color: #fff; font-size: 0.7rem;
+  font-weight: 700; width: 20px; height: 20px;
+  border-radius: 50%; display: none;
+  align-items: center; justify-content: center;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+/* =========================================================
+   Notifications List
+   ========================================================= */
+.notifications-list { display: flex; flex-direction: column; gap: 10px; }
+.notification-item {
+  background: #fff; border-radius: 10px; padding: 14px;
+  border-right: 4px solid #1a5f2a; box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  transition: 0.15s;
+}
+.notification-item.unread { border-right-color: #dc3545; background: #fff8f8; }
+.notification-item.read { border-right-color: #28a745; background: #f8fff8; }
+.notification-title {
+  font-weight: 700; color: #1a5f2a; font-size: 0.95rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.notification-body { color: #555; font-size: 0.88rem; margin-top: 6px; line-height: 1.5; }
+.notification-meta { color: #888; font-size: 0.78rem; margin-top: 8px; }
+
+/* =========================================================
+   Student Card (print)
+   ========================================================= */
+.student-card {
+  background: #fff; border: 2px solid #1a5f2a; border-radius: 12px;
+  padding: 24px; max-width: 480px; margin: 0 auto;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+.student-card .card-header {
+  text-align: center; border-bottom: 2px solid #e0e0e0; padding-bottom: 14px; margin-bottom: 14px;
+}
+.student-card .logo-mini { font-size: 2.2rem; margin-bottom: 4px; }
+.student-card .institute-name { font-size: 1.1rem; font-weight: 700; color: #1a5f2a; }
+.student-card .card-body { display: flex; flex-direction: column; gap: 10px; }
+.student-card .card-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; }
+.student-card .card-label { color: #666; font-size: 0.88rem; font-weight: 500; }
+.student-card .card-value { color: #1a5f2a; font-size: 0.95rem; font-weight: 700; text-align: left; flex: 1; }
+.student-card .card-footer {
+  text-align: center; margin-top: 16px; font-size: 0.78rem; color: #888;
+  border-top: 1px dashed #ddd; padding-top: 10px;
+}
+
+@media print {
+  body * { visibility: hidden; }
+  .modal-overlay, .modal-overlay * { visibility: visible; }
+  .modal { box-shadow: none; border: none; max-width: 100%; padding: 0; }
+  .modal .btn { display: none !important; }
+  .student-card { border: 2px solid #1a5f2a; box-shadow: none; }
+}
+
+/* =========================================================
    Responsive Tweaks
    ========================================================= */
 @media (max-width: 768px) {
